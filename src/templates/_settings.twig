@@ -3,29 +3,75 @@
 
 {% import '_includes/forms' as forms %}
 
-
 {{ forms.textField({
 	label: 'ChatGPT API Key',
 	name: 'chatGptApiKey',
-	instructions: 'Voer hier je OpenAI API key in. Deze wordt gebruikt om afbeeldingen te analyseren.',
+	id: 'chatGptApiKey',
+	instructions: 'Enter your OpenAI API key here. This will be used to analyze images.',
 	value: settings.chatGptApiKey,
 	placeholder: 'sk-XXXXXXXXXXXXXXXXXXXXXXX',
-	warning: 'Zorg dat je sleutel privé blijft.'
 }) }}
+
+{{ forms.textareaField({
+	label: 'ChatGPT Prompt',
+	name: 'chatGptPrompt',
+	rows: 4,
+	id: 'chatGptPrompt',
+	instructions: 'The prompt that performs the photo analysis.',
+	value: settings.chatGptPrompt,
+	placeholder: '',
+}) }}
+
+{{ forms.selectField({
+	label: 'Taal van ChatGPT-analyse',
+	instructions: 'Kies de taal waarin ChatGPT de kwaliteitsanalyse moet uitvoeren.',
+	name: 'chatGptResultLanguage',
+	value: settings.chatGptResultLanguage,
+	options: [
+		{ label: 'Nederlands', value: 'Dutch' },
+		{ label: 'Engels', value: 'English' }
+	]
+}) }}
+
+<hr />
 
 {{ forms.textField({
 	label: 'Slack Webhook URL',
 	name: 'slackWebhookUrl',
-	instructions: 'Een Slack Webhook URL om meldingen over beeldkwaliteit te ontvangen.',
+	id: 'slackWebhookUrl',
+	instructions: 'A Slack Webhook URL to receive notifications about image quality.',
 	value: settings.slackWebhookUrl,
 	placeholder: 'https://hooks.slack.com/services/...',
-	warning: 'Zorg ervoor dat de webhook actief is en naar het juiste kanaal wijst.'
 }) }}
 
 {{ forms.textField({
-	label: 'Slack Kanaal',
+	label: 'Slack Channel',
 	name: 'slackChannel',
-	instructions: 'Geef hier een Slack kanaal of gebruiker op (zoals #media of @john).',
+	id: 'slackChannel',
+	instructions: 'Specify a Slack channel or user here (e.g., #media or @john).',
 	value: settings.slackChannel,
 	placeholder: '#media'
+}) }}
+
+<hr />
+
+
+{% set allAssetFields = craft.app.fields.allFields
+	|filter(field => field.className == 'craft\\fields\\Assets')
+%}
+
+{% set fieldOptions = [] %}
+{% for field in allAssetFields %}
+	{% set fieldOptions = fieldOptions|merge([{
+		label: field.name ~ ' (' ~ field.handle ~ ')',
+		value: field.handle,
+		checked: field.handle in settings.allowedAssetFieldHandles
+	}]) %}
+{% endfor %}
+
+{{ forms.checkboxGroupField({
+	label: 'Controleer alleen deze Asset velden',
+	instructions: 'De plugin draait alleen als het bestand is gekoppeld aan een van deze velden.',
+	name: 'allowedAssetFieldHandles',
+	options: fieldOptions
 }) }}

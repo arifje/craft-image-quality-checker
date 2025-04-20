@@ -55,11 +55,11 @@ class AnalyzeImageJob extends BaseJob
 				'messages' => [[
 					'role' => 'user',
 					'content' => [
-						['type' => 'text', 'text' => 'You are an expert in image quality. Evaluate this image from 1 (very bad) to 100 (excellent), considering sharpness, blur, noise, and motion blur. Return a plain JSON object without any markup: {"score": X, "reason": "..."}. Translate the reason to Dutch.'],
+						['type' => 'text', 'text' => $settings->chatGptPrompt . '. Return a JSON object without any other data, markup or styling. Example: {"score": X, "reason": "..."}. Translate the value of reason to ' . $settings->chatGptResultLanguage . '.'],
 						['type' => 'image_url', 'image_url' => ['url' => 'data:' . $mime . ';base64,' . $imageBase64]],
 					]
 				]],
-				'max_tokens' => 100,
+				'max_tokens' => 500,
 			],
 		]);
 
@@ -149,9 +149,7 @@ class AnalyzeImageJob extends BaseJob
 				]]
 			]
 		];
-
-		
-		
+	
 		$slackPayload = [
 			'blocks' => $blocks
 		];
