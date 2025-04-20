@@ -14,13 +14,14 @@ class Settings extends Model
 	public string $chatGptPrompt = 'You are an expert in image quality. Evaluate this image from 1 (very bad) to 100 (excellent), considering sharpness, blur, noise, and motion blur.';
 	public string $chatGptResultLanguage = 'Dutch';
 	public string $slackWebhookUrl = '';
+	public string $slackBotToken = ''; // Required for postMessage method
  	public string $slackChannel = '';
 	public array $allowedAssetFieldHandles = [];
 
 	public function rules(): array
 	{
 		return [
-			[['chatGptApiKey', 'slackWebhookUrl', 'slackChannel','chatGptResultLanguage'], 'string'],
+			[['chatGptApiKey', 'slackWebhookUrl', 'slackChannel','chatGptResultLanguage','slackBotToken'], 'string'],
 			[['allowedAssetFieldHandles'], 'safe'],
 		];
 	}

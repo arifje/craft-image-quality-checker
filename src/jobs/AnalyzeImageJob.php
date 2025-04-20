@@ -150,11 +150,17 @@ class AnalyzeImageJob extends BaseJob
 			]
 		];
 	
-		$slackPayload = [
-			'blocks' => $blocks
-		];
-		
-		$client->post($webhook, ['json' => $slackPayload]);
+		$client->post('https://slack.com/api/chat.postMessage', [
+			'headers' => [
+				'Authorization' => 'Bearer ' . $settings->slackBotToken,
+				'Content-Type' => 'application/json',
+			],
+			'json' => [
+				'channel' => $settings->slackChannel, 
+				'text' => 'Beeldkwaliteit analyse',
+				'blocks' => $blocks,
+			],
+		]);
 	}
 	
 	private function getParentEntryForAsset(int $assetId): ?Entry

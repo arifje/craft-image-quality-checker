@@ -36,6 +36,15 @@
 <hr />
 
 {{ forms.textField({
+	label: 'Slack Bot Token',
+	name: 'slackBotToken',
+	id: 'slackBotToken',
+	instructions: 'Enter your bot Token (see https://api.slack.com/apps, Oauth & permissions).',
+	value: settings.slackBotToken,
+	placeholder: 'xoxb-xxx',
+}) }}
+
+{{ forms.textField({
 	label: 'Slack Webhook URL',
 	name: 'slackWebhookUrl',
 	id: 'slackWebhookUrl',

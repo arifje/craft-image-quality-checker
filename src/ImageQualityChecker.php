@@ -85,15 +85,12 @@ class ImageQualityChecker extends Plugin
 			// Get volume handle of current asset
 			$volume = $asset->getVolume();
 			$volumeHandle = $volume->handle ?? null;
-
-			Craft::info("ImageQualityChecker: " . $volumeHandle);
 			
 			// If no allowed fields are selected, skip
 			if (empty($allowedHandles)) {
 				Craft::info("ImageQualityChecker: No asset fields selected in settings — skipping.", __METHOD__);
 				return;
 			}
-			
 			
 			// If field handle not in allowed list, skip
 			if (!in_array($volumeHandle, $allowedHandles, true)) {
