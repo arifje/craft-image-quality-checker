@@ -1,0 +1,31 @@
+{# @var plugin \arjanbrinkman\craftimagequalitychecker\ImageQualityChecker #}
+{# @var settings \arjanbrinkman\craftimagequalitychecker\models\Settings #}
+
+{% import '_includes/forms' as forms %}
+
+
+{{ forms.textField({
+	label: 'ChatGPT API Key',
+	name: 'chatGptApiKey',
+	instructions: 'Voer hier je OpenAI API key in. Deze wordt gebruikt om afbeeldingen te analyseren.',
+	value: settings.chatGptApiKey,
+	placeholder: 'sk-XXXXXXXXXXXXXXXXXXXXXXX',
+	warning: 'Zorg dat je sleutel privé blijft.'
+}) }}
+
+{{ forms.textField({
+	label: 'Slack Webhook URL',
+	name: 'slackWebhookUrl',
+	instructions: 'Een Slack Webhook URL om meldingen over beeldkwaliteit te ontvangen.',
+	value: settings.slackWebhookUrl,
+	placeholder: 'https://hooks.slack.com/services/...',
+	warning: 'Zorg ervoor dat de webhook actief is en naar het juiste kanaal wijst.'
+}) }}
+
+{{ forms.textField({
+	label: 'Slack Kanaal',
+	name: 'slackChannel',
+	instructions: 'Geef hier een Slack kanaal of gebruiker op (zoals #media of @john).',
+	value: settings.slackChannel,
+	placeholder: '#media'
+}) }}
