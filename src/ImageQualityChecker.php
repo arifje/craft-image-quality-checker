@@ -72,16 +72,20 @@ class ImageQualityChecker extends Plugin
 
 			/** @var Asset $asset */
 			$asset = $event->sender;
-			$volumeHandle = $asset->getVolume()->handle;
 
 			// Only analyze new images
 			if ($asset->kind !== 'image' || !$event->isNew) {
 				return;
 			}
 		
+			// Allowed volumes
 			$settings = $this->getSettings();
 			$allowedHandles = $settings->allowedAssetFieldHandles;
 			
+			// Get volume handle of current asset
+			$volume = $asset->getVolume();
+			$volumeHandle = $volume->handle ?? null;
+
 			Craft::info("ImageQualityChecker: " . $volumeHandle);
 			
 			// If no allowed fields are selected, skip
