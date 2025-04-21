@@ -19,22 +19,42 @@ class AnalyzeImageJob extends BaseJob
 
 	public function execute($queue): void
 	{
+		$settings = \arjanbrinkman\craftimagequalitychecker\ImageQualityChecker::getInstance()->getSettings();
+
 		$asset = Craft::$app->assets->getAssetById($this->assetId);
 		if (!$asset || $asset->kind !== 'image') {
-			Craft::warning("AnalyzeImageJob: Asset not found or not an image.", __METHOD__);
+			Craft::warning("ImageQualityChecker/AnalyzeImageJob: Asset not found or not an image.", __METHOD__);
+			return;
+		}
+				
+		// Check if we need to analyze assets in this Volume
+		// Get volume
+		$volume = $asset->getVolume();
+		$volumeHandle = $volume->handle ?? null;		
+		$allowedHandles = $settings->allowedAssetFieldHandles;
+		
+		if (empty($allowedHandles)) {
+			Craft::info("ImageQualityChecker/AnalyzeImageJob: No asset fields selected in settings — skipping.", __METHOD__);
 			return;
 		}
 		
+		if (!in_array($volumeHandle, $allowedHandles, true)) {
+			Craft::info("ImageQualityChecker/AnalyzeImageJob: Asset uploaded via non-selected volume '{$volumeHandle}' — skipping.", __METHOD__);
+			return;
+		}
+		
+		// Get full path
 		$localPath = $this->getFullAssetPathById($asset->id);
 		
 		if (!$localPath || !file_exists($localPath)) {
-			Craft::warning("AnalyzeImageJob: File not found for asset ID {$asset->id}", __METHOD__);
+			Craft::warning("ImageQualityChecker/AnalyzeImageJob: File not found for asset ID {$asset->id}", __METHOD__);
 			return;
 		}
 		
+		// Create base64 string
 		$imageBase64 = base64_encode(file_get_contents($localPath));
-
-		$settings = \arjanbrinkman\craftimagequalitychecker\ImageQualityChecker::getInstance()->getSettings();
+		
+		// Api key and webhook
 		$apiKey = $settings->chatGptApiKey;
 		$webhook = $settings->slackWebhookUrl;
 

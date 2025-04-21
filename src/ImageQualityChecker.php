@@ -14,6 +14,8 @@ use craft\base\Model;
 use craft\base\Plugin;
 use craft\elements\Asset;
 use craft\events\ModelEvent;
+use craft\services\Elements;
+use craft\events\ElementEvent;
 
 /**
  * Image Quality Checker plugin
@@ -68,39 +70,16 @@ class ImageQualityChecker extends Plugin
 
 	private function attachEventHandlers(): void
 	{
-		Event::on(Asset::class, Asset::EVENT_AFTER_SAVE, function(ModelEvent $event) {
-
-			/** @var Asset $asset */
-			$asset = $event->sender;
-
-			// Only analyze new images
-			if ($asset->kind !== 'image' || !$event->isNew) {
+		Event::on(Elements::class, Elements::EVENT_AFTER_SAVE_ELEMENT, function(ElementEvent $event) {
+			$element = $event->element;
+		
+			if (!$element instanceof Asset || $element->kind !== 'image' || !$event->isNew) {
 				return;
 			}
 		
-			// Allowed volumes
-			$settings = $this->getSettings();
-			$allowedHandles = $settings->allowedAssetFieldHandles;
-			
-			// Get volume handle of current asset
-			$volume = $asset->getVolume();
-			$volumeHandle = $volume->handle ?? null;
-			
-			// If no allowed fields are selected, skip
-			if (empty($allowedHandles)) {
-				Craft::info("ImageQualityChecker: No asset fields selected in settings — skipping.", __METHOD__);
-				return;
-			}
-			
-			// If field handle not in allowed list, skip
-			if (!in_array($volumeHandle, $allowedHandles, true)) {
-				Craft::info("ImageQualityChecker: Asset uploaded via non-selected field '{$volumeHandle}' — skipping.", __METHOD__);
-				return;
-			}
-			
-			// Queue the job
-			Craft::$app->queue->push(new AnalyzeImageJob([
-				'assetId' => $asset->id,
+			// Push job
+			Craft::$app->queue->delay(10)->push(new AnalyzeImageJob([
+				'assetId' => $element->id,
 			]));
 		});
 	}
