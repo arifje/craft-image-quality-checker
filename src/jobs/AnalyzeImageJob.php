@@ -20,6 +20,13 @@ class AnalyzeImageJob extends BaseJob
 {
 	public int $assetId;
 
+	/**
+	 * Executes the image quality analysis job using ChatGPT.
+	 * Checks if the asset should be analyzed, sends it to ChatGPT,
+	 * parses the result, and sends notifications via Slack and/or email.
+	 *
+	 * @param \craft\queue\QueueInterface $queue
+	 */
 	public function execute($queue): void
 	{
 		$settings = ImageQualityChecker::getInstance()->getSettings();
@@ -30,8 +37,6 @@ class AnalyzeImageJob extends BaseJob
 			return;
 		}
 				
-		// Check if we need to analyze assets in this Volume
-		// Get volume
 		$volume = $asset->getVolume();
 		$volumeHandle = $volume->handle ?? null;		
 		$allowedHandles = $settings->allowedAssetFieldHandles;
@@ -46,7 +51,6 @@ class AnalyzeImageJob extends BaseJob
 			return;
 		} 
 		
-		// Get full path
 		$localPath = $this->getFullAssetPathById($asset->id);
 		
 		if (!$localPath || !file_exists($localPath)) {
@@ -54,10 +58,8 @@ class AnalyzeImageJob extends BaseJob
 			return;
 		}
 		
-		// Create base64 string
 		$imageBase64 = base64_encode(file_get_contents($localPath));
 		
-		// Api key and webhook
 		$apiKey = $settings->chatGptApiKey;
 		$webhook = $settings->slackWebhookUrl;
 
@@ -94,7 +96,6 @@ class AnalyzeImageJob extends BaseJob
 			return;
 		}
 
-		// Attempt to extract JSON
 		$matches = [];
 		preg_match('/\\{.*\\}/s', $content, $matches);
 		$data = isset($matches[0]) ? json_decode($matches[0], true) : null;
@@ -102,10 +103,7 @@ class AnalyzeImageJob extends BaseJob
 		$score = $data['score'] ?? 'Onbekend';
 		$reason = $data['reason'] ?? $content;
 
-		// Get absolute URL to the image
-		$imageUrl = $asset->getUrl(); // Make sure your volumes are public or generate signed URLs
-		
-		// Try to find related entry (e.g. via asset field)
+		$imageUrl = $asset->getUrl();
 		$relatedEntry = $this->getParentEntryForAsset($asset->id);
 
 		$entryTitle = $relatedEntry?->title ?? null;
@@ -113,9 +111,7 @@ class AnalyzeImageJob extends BaseJob
 		
 		$author = $relatedEntry?->getAuthor()?->username
 		?? ($asset->uploaderId ? Craft::$app->users->getUserById($asset->uploaderId)?->username : 'Onbekend');
-		   	
-		// Send to Slack
-		// Score evaluation
+			   
 		$scoreEmoji = '❓';
 		$scoreLabel = 'Onbekend';
 		$scoreNum = (int) $score;
@@ -134,6 +130,34 @@ class AnalyzeImageJob extends BaseJob
 			$scoreLabel = 'Uitstekend';
 		}
 		
+		$data = [
+			'scoreNum' => $score,
+			'scoreEmoji' => $scoreEmoji,
+			'scoreLabel' => $scoreLabel,
+			'author' => $author,
+			'imageUrl' => $imageUrl,
+			'entryLink' => $entryLink,
+			'entryTitle' => $entryTitle,
+			'reason' => $reason,
+		];
+		
+		$this->sendSlackNotification($data);
+		$this->sendEmailNotification($data);
+	}
+
+	/**
+	 * Sends a Slack message with the image quality analysis results.
+	 *
+	 * @param array $data The formatted result data from the ChatGPT analysis.
+	 */
+	private function sendSlackNotification(array $data): void
+	{
+		$settings = ImageQualityChecker::getInstance()->getSettings();
+	
+		if (!$settings->slackNotification || !$settings->slackBotToken || !$settings->slackChannel) {
+			return;
+		}
+	
 		$blocks = [
 			[
 				'type' => 'header',
@@ -148,19 +172,19 @@ class AnalyzeImageJob extends BaseJob
 				'fields' => array_filter([
 					[
 						'type' => 'mrkdwn',
-						'text' => "*Score:*\n{$scoreEmoji} *{$scoreNum}/100* ({$scoreLabel})"
+						'text' => "*Score:*\n{$data['scoreEmoji']} *{$data['scoreNum']}/100* ({$data['scoreLabel']})"
 					],
 					[
 						'type' => 'mrkdwn',
-						'text' => "*Auteur:*\n{$author}"
+						'text' => "*Auteur:*\n{$data['author']}"
 					],
 					[
 						'type' => 'mrkdwn',
-						'text' => "*Afbeelding:*\n<{$imageUrl}|Bekijken>"
+						'text' => "*Afbeelding:*\n<{$data['imageUrl']}|Bekijken>"
 					],
-					$entryLink ? [
+					$data['entryLink'] ? [
 						'type' => 'mrkdwn',
-						'text' => "*Artikel:*\n<{$entryLink}|{$entryTitle}>"
+						'text' => "*Artikel:*\n<{$data['entryLink']}|{$data['entryTitle']}>"
 					] : null,
 				])
 			],
@@ -168,27 +192,79 @@ class AnalyzeImageJob extends BaseJob
 				'type' => 'context',
 				'elements' => [[
 					'type' => 'mrkdwn',
-					'text' => $reason
+					'text' => $data['reason']
 				]]
 			]
 		];
 	
-		$client->post('https://slack.com/api/chat.postMessage', [
+		Craft::createGuzzleClient()->post('https://slack.com/api/chat.postMessage', [
 			'headers' => [
 				'Authorization' => 'Bearer ' . $settings->slackBotToken,
 				'Content-Type' => 'application/json',
 			],
 			'json' => [
-				'channel' => $settings->slackChannel, 
+				'channel' => $settings->slackChannel,
 				'text' => 'Beeldkwaliteit analyse',
 				'blocks' => $blocks,
 			],
 		]);
 	}
+
+	/**
+	 * Sends an HTML email with image quality analysis results to the author.
+	 * CCs the configured recipient if set in plugin settings.
+	 *
+	 * @param array $data The formatted result data from the ChatGPT analysis.
+	 */
+	private function sendEmailNotification(array $data): void
+	{
+		$settings = ImageQualityChecker::getInstance()->getSettings();
 	
+		if (!$settings->emailNotification) {
+			return;
+		}
+	
+		$author = $data['author'] ?? null;
+		$authorUser = $author ? Craft::$app->users->getUserByUsernameOrEmail($author) : null;
+		$authorEmail = $authorUser?->email ?? null;
+	
+		if (!$authorEmail) {
+			Craft::warning("ImageQualityChecker: Auteur heeft geen geldig e-mailadres, e-mail wordt niet verzonden.", __METHOD__);
+			return;
+		}
+	
+		$htmlBody = "<h2>📸 Beeldkwaliteit analyse</h2>
+			<p><strong>Score:</strong> {$data['scoreEmoji']} {$data['scoreNum']}/100 ({$data['scoreLabel']})<br>
+			<strong>Auteur:</strong> {$data['author']}<br>" .
+			($data['entryLink'] ? "<strong>Artikel:</strong> <a href=\"{$data['entryLink']}\">{$data['entryTitle']}</a><br>" : '') .
+			"</p>" .
+			"<p><strong>Afbeelding:</strong><br>
+				<a href=\"{$data['imageUrl']}\" target=\"_blank\">
+					<img src=\"{$data['imageUrl']}\" alt=\"Geanalyseerde afbeelding\" style=\"max-width:400px; height:auto; border:1px solid #ddd;\">
+				</a>
+			</p>
+			<p><strong>Toelichting:</strong><br>{$data['reason']}</p>";
+	
+		$mail = Craft::$app->getMailer()->compose()
+			->setTo($authorEmail)
+			->setSubject('Beeldkwaliteit analyse')
+			->setHtmlBody($htmlBody);
+	
+		if (!empty($settings->emailNotificationRecipient)) {
+			$mail->setCc($settings->emailNotificationRecipient);
+		}
+	
+		$mail->send();
+	}
+
+	/**
+	 * Attempts to find the parent entry related to the given asset ID.
+	 *
+	 * @param int $assetId The asset ID to search a parent entry for.
+	 * @return Entry|null The related entry if found.
+	 */
 	private function getParentEntryForAsset(int $assetId): ?Entry
 	{
-		// Step 1: Find the element that references the asset
 		$sourceId = (new Query())
 			->select(['sourceId'])
 			->from(Table::RELATIONS)
@@ -199,20 +275,16 @@ class AnalyzeImageJob extends BaseJob
 			return null;
 		}
 	
-		// Step 2: Get the related element (could be Entry or Matrix block subclass)
-		/** @var ElementInterface|null $element */
 		$element = Craft::$app->elements->getElementById($sourceId, null, '*');
 	
 		if (!$element) {
 			return null;
 		}
 	
-		// Step 3: If it's an Entry, return it
 		if ($element instanceof Entry) {
 			return $element;
 		}
 	
-		// Step 4: If it's a Matrix block (Craft 5 uses custom classes), check if it has an ownerId
 		if (property_exists($element, 'ownerId') && $element->ownerId) {
 			return Entry::find()
 				->id($element->ownerId)
@@ -223,6 +295,12 @@ class AnalyzeImageJob extends BaseJob
 		return null;
 	}
 
+	/**
+	 * Returns the full file system path of an asset by ID.
+	 *
+	 * @param int $id The asset ID.
+	 * @return string|null The full path or null if invalid.
+	 */
 	public function getFullAssetPathById(int $id): ?string
 	{
 		$asset = Asset::find()->id($id)->one();
@@ -234,9 +312,14 @@ class AnalyzeImageJob extends BaseJob
 		$fsPath = Craft::getAlias($asset->getFs()->path);
 		return $fsPath . DIRECTORY_SEPARATOR . $asset->folderPath . $asset->filename;
 	}
-	
+
+	/**
+	 * Returns the default description for this job.
+	 *
+	 * @return string
+	 */
 	protected function defaultDescription(): string
 	{
-		return 'Beeldkwaliteit analyseren met ChatGPT';
+		return 'Analyse image quality with ChatGPT';
 	}
 }

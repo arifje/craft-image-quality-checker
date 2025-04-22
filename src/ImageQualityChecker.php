@@ -74,7 +74,8 @@ class ImageQualityChecker extends Plugin
 		Event::on(Elements::class, Elements::EVENT_AFTER_SAVE_ELEMENT, function(ElementEvent $event) {
 			$element = $event->element;
 		
-			if (!$element instanceof Asset || $element->kind !== 'image' || !$event->isNew) {
+			//if (!$element instanceof Asset || $element->kind !== 'image' || !$event->isNew) {
+			if (!$element instanceof Asset || $element->kind !== 'image') {
 				return;
 			}
 						
@@ -85,7 +86,7 @@ class ImageQualityChecker extends Plugin
 			}*/
 			
 			// Push to a job
-			Craft::$app->queue->delay(15)->push(new AnalyzeImageJob([
+			Craft::$app->queue->delay(10)->push(new AnalyzeImageJob([
 				'assetId' => $element->id,
 			]));
 		});
