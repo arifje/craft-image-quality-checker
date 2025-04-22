@@ -74,13 +74,18 @@ class ImageQualityChecker extends Plugin
 		Event::on(Elements::class, Elements::EVENT_AFTER_SAVE_ELEMENT, function(ElementEvent $event) {
 			$element = $event->element;
 		
-			// || !$event->isNew
-			if (!$element instanceof Asset || $element->kind !== 'image') {
+			if (!$element instanceof Asset || $element->kind !== 'image' || !$event->isNew) {
 				return;
 			}
-								
+						
+			/*$user = Craft::$app->getUser()->getIdentity();		
+			Craft::info("ImageQualityChecker event, user id: " . $user->id);
+			if($user->id != 1) {
+				return;
+			}*/
+			
 			// Push to a job
-			Craft::$app->queue->delay(10)->push(new AnalyzeImageJob([
+			Craft::$app->queue->delay(15)->push(new AnalyzeImageJob([
 				'assetId' => $element->id,
 			]));
 		});

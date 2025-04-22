@@ -23,10 +23,10 @@ class AnalyzeImageJob extends BaseJob
 	public function execute($queue): void
 	{
 		$settings = ImageQualityChecker::getInstance()->getSettings();
-
+		
 		$asset = Craft::$app->assets->getAssetById($this->assetId);
 		if (!$asset || $asset->kind !== 'image') {
-			Craft::warning("ImageQualityChecker/AnalyzeImageJob: Asset not found or not an image.", __METHOD__);
+			Craft::info("ImageQualityChecker/AnalyzeImageJob: Asset not found or not an image.", __METHOD__);
 			return;
 		}
 				
@@ -39,12 +39,12 @@ class AnalyzeImageJob extends BaseJob
 		if (empty($allowedHandles)) {
 			Craft::info("ImageQualityChecker/AnalyzeImageJob: No asset fields selected in settings — skipping.", __METHOD__);
 			return;
-		}
+		} 
 		
 		if (!in_array($volumeHandle, $allowedHandles, true)) {
 			Craft::info("ImageQualityChecker/AnalyzeImageJob: Asset uploaded via non-selected volume '{$volumeHandle}' — skipping.", __METHOD__);
 			return;
-		}
+		} 
 		
 		// Get full path
 		$localPath = $this->getFullAssetPathById($asset->id);
@@ -74,7 +74,7 @@ class AnalyzeImageJob extends BaseJob
 				'Content-Type'  => 'application/json',
 			],
 			'json' => [
-				'model' => $settings->chatGptModel,,
+				'model' => $settings->chatGptModel,
 				'messages' => [[
 					'role' => 'user',
 					'content' => [
