@@ -1,6 +1,9 @@
 <?php
 
 namespace arjanbrinkman\craftimagequalitychecker\jobs;
+
+use arjanbrinkman\craftimagequalitychecker\ImageQualityChecker;
+
 use Craft;
 use craft\queue\BaseJob;
 use craft\elements\Asset;
@@ -19,7 +22,7 @@ class AnalyzeImageJob extends BaseJob
 
 	public function execute($queue): void
 	{
-		$settings = \arjanbrinkman\craftimagequalitychecker\ImageQualityChecker::getInstance()->getSettings();
+		$settings = ImageQualityChecker::getInstance()->getSettings();
 
 		$asset = Craft::$app->assets->getAssetById($this->assetId);
 		if (!$asset || $asset->kind !== 'image') {

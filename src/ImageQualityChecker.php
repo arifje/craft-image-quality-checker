@@ -3,6 +3,7 @@
 namespace arjanbrinkman\craftimagequalitychecker;
 
 use Craft;
+
 use arjanbrinkman\craftimagequalitychecker\models\Settings;
 use arjanbrinkman\craftimagequalitychecker\services\ImageQualityService;
 use arjanbrinkman\craftimagequalitychecker\jobs\AnalyzeImageJob;
@@ -73,10 +74,13 @@ class ImageQualityChecker extends Plugin
 		Event::on(Elements::class, Elements::EVENT_AFTER_SAVE_ELEMENT, function(ElementEvent $event) {
 			$element = $event->element;
 		
-			if (!$element instanceof Asset || $element->kind !== 'image' || !$event->isNew) {
+			// || !$event->isNew
+			if (!$element instanceof Asset || $element->kind !== 'image') {
 				return;
 			}
 		
+			Craft::info("ImageQualityChecker event");
+						
 			// Push job
 			Craft::$app->queue->delay(10)->push(new AnalyzeImageJob([
 				'assetId' => $element->id,
