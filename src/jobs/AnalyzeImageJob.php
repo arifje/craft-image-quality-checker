@@ -74,7 +74,7 @@ class AnalyzeImageJob extends BaseJob
 				'Content-Type'  => 'application/json',
 			],
 			'json' => [
-				'model' => 'gpt-4-turbo',
+				'model' => $settings->chatGptModel,,
 				'messages' => [[
 					'role' => 'user',
 					'content' => [

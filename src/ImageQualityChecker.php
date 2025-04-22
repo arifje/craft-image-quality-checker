@@ -78,10 +78,8 @@ class ImageQualityChecker extends Plugin
 			if (!$element instanceof Asset || $element->kind !== 'image') {
 				return;
 			}
-		
-			Craft::info("ImageQualityChecker event");
-						
-			// Push job
+								
+			// Push to a job
 			Craft::$app->queue->delay(10)->push(new AnalyzeImageJob([
 				'assetId' => $element->id,
 			]));

@@ -3,6 +3,8 @@
 
 {% import '_includes/forms' as forms %}
 
+<h1>ChatGPT</h1>
+
 {{ forms.textField({
 	label: 'ChatGPT API Key',
 	name: 'chatGptApiKey',
@@ -22,9 +24,18 @@
 	placeholder: '',
 }) }}
 
+{{ forms.textField({
+	label: 'ChatGPT Model',
+	name: 'chatGptModel',
+	id: 'chatGptModel',
+	instructions: 'The chatGPT model that should be used. Default is gpt-4-turbo',
+	value: settings.chatGptModel,
+	placeholder: '',
+}) }}
+
 {{ forms.selectField({
-	label: 'Taal van ChatGPT-analyse',
-	instructions: 'Kies de taal waarin ChatGPT de kwaliteitsanalyse moet uitvoeren.',
+	label: 'Language of the ChatGPT result',
+	instructions: 'Choose your language in which the result much be shown.',
 	name: 'chatGptResultLanguage',
 	value: settings.chatGptResultLanguage,
 	options: [
@@ -34,6 +45,8 @@
 }) }}
 
 <hr />
+
+<h1>Slack</h1>
 
 {{ forms.textField({
 	label: 'Slack Bot Token',
@@ -64,6 +77,7 @@
 
 <hr />
 
+<h1>Asset Volumes</h1>
 
 {% set allAssetFields = craft.app.fields.allFields
 	|filter(field => field.className == 'craft\\fields\\Assets')
@@ -79,8 +93,8 @@
 {% endfor %}
 
 {{ forms.checkboxGroupField({
-	label: 'Controleer alleen deze Asset velden',
-	instructions: 'De plugin draait alleen als het bestand is gekoppeld aan een van deze velden.',
+	label: 'Only run the analyses on these asset volumes',
+	instructions: 'Select your volumes that should be analysed.',
 	name: 'allowedAssetFieldHandles',
 	options: fieldOptions
 }) }}
