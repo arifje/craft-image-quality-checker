@@ -163,7 +163,7 @@ class AnalyzeImageJob extends BaseJob
 				'type' => 'header',
 				'text' => [
 					'type' => 'plain_text',
-					'text' => '📸 Beeldkwaliteit geanalyseerd van afbeelding',
+					'text' => '📸 Beeldkwaliteit geanalyseerd',
 					'emoji' => false
 				]
 			],
@@ -188,13 +188,13 @@ class AnalyzeImageJob extends BaseJob
 					] : null,
 				])
 			],
-			[
+			/*[
 				'type' => 'context',
 				'elements' => [[
 					'type' => 'mrkdwn',
 					'text' => $data['reason']
 				]]
-			]
+			]*/
 		];
 	
 		Craft::createGuzzleClient()->post('https://slack.com/api/chat.postMessage', [
@@ -206,6 +206,8 @@ class AnalyzeImageJob extends BaseJob
 				'channel' => $settings->slackChannel,
 				'text' => 'Beeldkwaliteit analyse',
 				'blocks' => $blocks,
+				'unfurl_links' => false,
+				'unfurl_media' => true,
 			],
 		]);
 	}
