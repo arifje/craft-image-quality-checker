@@ -26,6 +26,8 @@ class Settings extends Model
 	public bool $emailNotification = false;
 	public string $emailNotificationRecipient = '';
 	 
+	public int $notificationThreshold = 50;
+	
 	// Enabled volume handles
 	public array $allowedAssetFieldHandles = [];
 

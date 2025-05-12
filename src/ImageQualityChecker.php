@@ -17,6 +17,10 @@ use craft\elements\Asset;
 use craft\events\ModelEvent;
 use craft\services\Elements;
 use craft\events\ElementEvent;
+use craft\web\View;
+use craft\events\TemplateEvent;
+use craft\helpers\App;
+use craft\helpers\ElementHelper;
 
 /**
  * Image Quality Checker plugin
@@ -51,6 +55,9 @@ class ImageQualityChecker extends Plugin
 
 		$this->attachEventHandlers();
 
+		// Tabs (settings page)
+		$this->_registerSettings();
+		
 		Craft::$app->onInit(function() {
 			// Reserved for deferred code (element queries, etc.)
 		});
@@ -69,16 +76,34 @@ class ImageQualityChecker extends Plugin
 		]);
 	}
 
+	private function _registerSettings(): void
+	{
+		// Settings Template
+		Event::on(View::class, View::EVENT_BEFORE_RENDER_TEMPLATE, function (
+			TemplateEvent $e
+		) {
+			if (
+				$e->template == "settings/plugins/_settings.twig"
+			) {
+				// Add the tabs
+				$e->variables["tabs"] = [
+					["label" => "ChatGPT", "url" => "#settings-tab-chatgpt"],
+					["label" => "Notifications", "url" => "#settings-tab-notifications"],									
+					["label" => "Volumes", "url" => "#settings-tab-volumes"],
+				];
+			}
+		});
+	}
+	
 	private function attachEventHandlers(): void
 	{
 		Event::on(Elements::class, Elements::EVENT_AFTER_SAVE_ELEMENT, function(ElementEvent $event) {
 			$element = $event->element;
 		
-			//if (!$element instanceof Asset || $element->kind !== 'image' || !$event->isNew) {
-			if (!$element instanceof Asset || $element->kind !== 'image') {
+			if (!$element instanceof Asset || $element->kind !== 'image' || !$event->isNew) {
 				return;
 			}
-						
+			
 			/*$user = Craft::$app->getUser()->getIdentity();		
 			Craft::info("ImageQualityChecker event, user id: " . $user->id);
 			if($user->id != 1) {

@@ -141,8 +141,11 @@ class AnalyzeImageJob extends BaseJob
 			'reason' => $reason,
 		];
 		
-		$this->sendSlackNotification($data);
-		$this->sendEmailNotification($data);
+		// Send notification if score of below treshhold
+		if($score && $score <= $settings->notificationThreshold) {
+			$this->sendSlackNotification($data);
+			$this->sendEmailNotification($data);
+		} 
 	}
 
 	/**

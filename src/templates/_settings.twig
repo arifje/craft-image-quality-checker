@@ -3,128 +3,143 @@
 
 {% import '_includes/forms' as forms %}
 
-<h1>ChatGPT</h1>
+<div id="tab-chatgpt">
+		
+	<h1>ChatGPT</h1>
+	
+	{{ forms.textField({
+		label: 'ChatGPT API Key',
+		name: 'chatGptApiKey',
+		id: 'chatGptApiKey',
+		instructions: 'Enter your OpenAI API key here. This will be used to analyze images.',
+		value: settings.chatGptApiKey,
+		placeholder: 'sk-XXXXXXXXXXXXXXXXXXXXXXX',
+	}) }}
+	
+	{{ forms.textareaField({
+		label: 'ChatGPT Prompt',
+		name: 'chatGptPrompt',
+		rows: 4,
+		id: 'chatGptPrompt',
+		instructions: 'The prompt that performs the photo analysis.',
+		value: settings.chatGptPrompt,
+		placeholder: '',
+	}) }}
+	
+	{{ forms.textField({
+		label: 'ChatGPT Model',
+		name: 'chatGptModel',
+		id: 'chatGptModel',
+		instructions: 'The chatGPT model that should be used. Default is gpt-4-turbo',
+		value: settings.chatGptModel,
+		placeholder: '',
+	}) }}
+	
+	{{ forms.selectField({
+		label: 'Language of the ChatGPT result',
+		instructions: 'Choose your language in which the result much be shown.',
+		name: 'chatGptResultLanguage',
+		value: settings.chatGptResultLanguage,
+		options: [
+			{ label: 'Nederlands', value: 'Dutch' },
+			{ label: 'Engels', value: 'English' }
+		]
+	}) }}
 
-{{ forms.textField({
-	label: 'ChatGPT API Key',
-	name: 'chatGptApiKey',
-	id: 'chatGptApiKey',
-	instructions: 'Enter your OpenAI API key here. This will be used to analyze images.',
-	value: settings.chatGptApiKey,
-	placeholder: 'sk-XXXXXXXXXXXXXXXXXXXXXXX',
-}) }}
+</div>
 
-{{ forms.textareaField({
-	label: 'ChatGPT Prompt',
-	name: 'chatGptPrompt',
-	rows: 4,
-	id: 'chatGptPrompt',
-	instructions: 'The prompt that performs the photo analysis.',
-	value: settings.chatGptPrompt,
-	placeholder: '',
-}) }}
+<div id="tab-notifications" class="hidden">
 
-{{ forms.textField({
-	label: 'ChatGPT Model',
-	name: 'chatGptModel',
-	id: 'chatGptModel',
-	instructions: 'The chatGPT model that should be used. Default is gpt-4-turbo',
-	value: settings.chatGptModel,
-	placeholder: '',
-}) }}
+	<h1>Slack</h1>
+	
+	{{ forms.textField({
+		label: 'Threshold',
+		name: 'notificationThreshold',
+		id: 'notificationThreshold',
+		instructions: 'Only send notification when image quality score is below a specific value',
+		value: settings.notificationThreshold,
+		placeholder: '',
+	}) }}
+	
+	{{ forms.lightswitchField({
+		label: "Send results to Slack"|t,
+		id: 'slackNotification', 
+		name: 'slackNotification',
+		on: settings.slackNotification,
+		instructions: "Also fill in the Slack variables below.",
+	}) }}
+	
+	{{ forms.textField({
+		label: 'Slack Bot Token',
+		name: 'slackBotToken',
+		id: 'slackBotToken',
+		instructions: 'Enter your bot Token (see https://api.slack.com/apps, Oauth & permissions).',
+		value: settings.slackBotToken,
+		placeholder: 'xoxb-xxx',
+	}) }}
+	
+	{{ forms.textField({
+		label: 'Slack Webhook URL',
+		name: 'slackWebhookUrl',
+		id: 'slackWebhookUrl',
+		instructions: 'A Slack Webhook URL to receive notifications about image quality.',
+		value: settings.slackWebhookUrl,
+		placeholder: 'https://hooks.slack.com/services/...',
+	}) }}
+	
+	{{ forms.textField({
+		label: 'Slack Channel',
+		name: 'slackChannel',
+		id: 'slackChannel',
+		instructions: 'Specify a Slack channel or user here (e.g., #media or @john).',
+		value: settings.slackChannel,
+		placeholder: '#media'
+	}) }}
+	
+	<hr />
+	
+	<h1>Email</h1>
+	
+	{{ forms.lightswitchField({
+		label: "Send results by email"|t,
+		id: 'emailNotification', 
+		name: 'emailNotification',
+		on: settings.emailNotification,
+		instructions: "",
+	}) }}
+	
+	{{ forms.textField({
+		label: 'Email recipient',
+		name: 'emailNotificationRecipient',
+		id: 'emailNotificationRecipient',
+		instructions: 'Add the email address of the recipient besides the author that uploaded the image.',
+		value: settings.emailNotificationRecipient,
+		placeholder: 'user@email.com'
+	}) }}
 
-{{ forms.selectField({
-	label: 'Language of the ChatGPT result',
-	instructions: 'Choose your language in which the result much be shown.',
-	name: 'chatGptResultLanguage',
-	value: settings.chatGptResultLanguage,
-	options: [
-		{ label: 'Nederlands', value: 'Dutch' },
-		{ label: 'Engels', value: 'English' }
-	]
-}) }}
+</div>
 
-<hr />
-
-<h1>Slack</h1>
-
-{{ forms.lightswitchField({
-	label: "Send results to Slack"|t,
-	id: 'slackNotification', 
-	name: 'slackNotification',
-	on: settings.slackNotification,
-	instructions: "Also fill in the Slack variables below.",
-}) }}
-
-{{ forms.textField({
-	label: 'Slack Bot Token',
-	name: 'slackBotToken',
-	id: 'slackBotToken',
-	instructions: 'Enter your bot Token (see https://api.slack.com/apps, Oauth & permissions).',
-	value: settings.slackBotToken,
-	placeholder: 'xoxb-xxx',
-}) }}
-
-{{ forms.textField({
-	label: 'Slack Webhook URL',
-	name: 'slackWebhookUrl',
-	id: 'slackWebhookUrl',
-	instructions: 'A Slack Webhook URL to receive notifications about image quality.',
-	value: settings.slackWebhookUrl,
-	placeholder: 'https://hooks.slack.com/services/...',
-}) }}
-
-{{ forms.textField({
-	label: 'Slack Channel',
-	name: 'slackChannel',
-	id: 'slackChannel',
-	instructions: 'Specify a Slack channel or user here (e.g., #media or @john).',
-	value: settings.slackChannel,
-	placeholder: '#media'
-}) }}
-
-<hr />
-
-<h1>Email</h1>
-
-{{ forms.lightswitchField({
-	label: "Send results by email"|t,
-	id: 'emailNotification', 
-	name: 'emailNotification',
-	on: settings.emailNotification,
-	instructions: "",
-}) }}
-
-{{ forms.textField({
-	label: 'Email recipient',
-	name: 'emailNotificationRecipient',
-	id: 'emailNotificationRecipient',
-	instructions: 'Add the email address of the recipient besides the author that uploaded the image.',
-	value: settings.emailNotificationRecipient,
-	placeholder: 'user@email.com'
-}) }}
-
-
-<hr />
-
-<h1>Asset Volumes</h1>
-
-{% set allAssetFields = craft.app.fields.allFields
-	|filter(field => field.className == 'craft\\fields\\Assets')
-%}
-
-{% set fieldOptions = [] %}
-{% for field in allAssetFields %}
-	{% set fieldOptions = fieldOptions|merge([{
-		label: field.name ~ ' (' ~ field.handle ~ ')',
-		value: field.handle,
-		checked: field.handle in settings.allowedAssetFieldHandles
-	}]) %}
-{% endfor %}
-
-{{ forms.checkboxGroupField({
-	label: 'Only run the analyses on these asset volumes',
-	instructions: 'Select your volumes that should be analysed.',
-	name: 'allowedAssetFieldHandles',
-	options: fieldOptions
-}) }}
+<div id="tab-volumes"  class="hidden">
+	
+	<h1>Asset Volumes</h1>
+	
+	{% set allAssetFields = craft.app.fields.allFields
+		|filter(field => field.className == 'craft\\fields\\Assets')
+	%}
+	
+	{% set fieldOptions = [] %}
+	{% for field in allAssetFields %}
+		{% set fieldOptions = fieldOptions|merge([{
+			label: field.name ~ ' (' ~ field.handle ~ ')',
+			value: field.handle,
+			checked: field.handle in settings.allowedAssetFieldHandles
+		}]) %}
+	{% endfor %}
+	
+	{{ forms.checkboxGroupField({
+		label: 'Only run the analyses on these asset volumes',
+		instructions: 'Select your volumes that should be analysed.',
+		name: 'allowedAssetFieldHandles',
+		options: fieldOptions
+	}) }}
+</div>
