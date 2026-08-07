@@ -17,6 +17,7 @@
 			uploadDiscard: 'craft-image-enhancer/upload-assistant/discard',
 			assetInfo: 'craft-image-enhancer/article-image/asset-info',
 			enhance: 'craft-image-enhancer/article-image/enhance',
+			blurFaces: 'craft-image-enhancer/article-image/blur-faces',
 			status: 'craft-image-enhancer/article-image/status',
 			cancel: 'craft-image-enhancer/article-image/cancel',
 			keep: 'craft-image-enhancer/article-image/keep',
@@ -451,6 +452,7 @@
 			this.jobId = '';
 			this.previewId = '';
 			this.enhancedUrl = '';
+			this.operation = 'enhance';
 			this.pollTimer = null;
 			this.statusStartedAt = 0;
 			this.statusTickTimer = null;
@@ -501,11 +503,12 @@
 			const title = this.uploadRepair ? 'Image does not meet field requirements' : 'Enhance image';
 			const description = this.uploadRepair
 				? 'Review the uploaded image and choose how to make it selectable for this field.'
-				: 'Queue an enhancement, compare the result, then save it over the current asset.';
+				: 'Enhance the image or blur its faces, compare the result, then save it over the current asset.';
 			const root = document.createElement('div');
 			root.className = 'modal image-enhancer-cp-modal';
 			root.innerHTML = [
 				'<div class="image-enhancer-cp-shell">',
+				'  <div class="image-enhancer-cp-body">',
 				'  <div class="image-enhancer-cp-header">',
 				'    <div>',
 				`      <h2>${title}</h2>`,
@@ -542,9 +545,11 @@
 				'    <span data-status-text></span>',
 				'  </div>',
 				'  <div class="image-enhancer-cp-error" data-error hidden></div>',
+				'  </div>',
 				'  <div class="image-enhancer-cp-actions">',
 				'    <button type="button" class="btn submit image-enhancer-cp-is-hidden" data-local-repair>Resize locally</button>',
 				'    <button type="button" class="btn submit" data-enhance>Enhance</button>',
+				'    <button type="button" class="btn" data-blur-faces>Blur faces</button>',
 				'    <button type="button" class="btn image-enhancer-cp-is-hidden" data-cancel>Cancel</button>',
 				'    <button type="button" class="btn submit image-enhancer-cp-is-hidden" data-keep>Save replacement</button>',
 				'    <button type="button" class="btn image-enhancer-cp-is-hidden" data-discard>Discard</button>',
@@ -566,6 +571,7 @@
 			this.statusText = root.querySelector('[data-status-text]');
 			this.error = root.querySelector('[data-error]');
 			this.enhanceButton = root.querySelector('[data-enhance]');
+			this.blurFacesButton = root.querySelector('[data-blur-faces]');
 			this.localRepairButton = root.querySelector('[data-local-repair]');
 			this.cancelButton = root.querySelector('[data-cancel]');
 			this.keepButton = root.querySelector('[data-keep]');
@@ -584,6 +590,7 @@
 			this.range.addEventListener('input', () => this.updateComparison());
 			root.querySelector('[data-local-repair]').addEventListener('click', () => this.repairLocally());
 			root.querySelector('[data-enhance]').addEventListener('click', () => this.enhance());
+			root.querySelector('[data-blur-faces]').addEventListener('click', () => this.blurFaces());
 			root.querySelector('[data-cancel]').addEventListener('click', () => this.cancel());
 			root.querySelector('[data-keep]').addEventListener('click', () => this.keep());
 			root.querySelector('[data-discard]').addEventListener('click', () => this.discard());
@@ -815,6 +822,7 @@
 				if (['queued', 'running', 'pending'].includes(response.status) && response.token) {
 					this.token = response.token;
 					this.jobId = response.jobId || '';
+					this.operation = response.operation || 'enhance';
 					this.setBusy(true, response.progressLabel || 'Queued');
 					this.poll();
 					return;
@@ -830,6 +838,7 @@
 
 		async enhance() {
 			this.clearError();
+			this.operation = 'enhance';
 			this.token = '';
 			this.jobId = '';
 			this.previewId = '';
@@ -866,6 +875,39 @@
 			}
 		}
 
+		async blurFaces() {
+			if (this.uploadRepair) {
+				return;
+			}
+
+			this.clearError();
+			this.operation = 'blurFaces';
+			this.token = '';
+			this.jobId = '';
+			this.previewId = '';
+			this.enhancedUrl = '';
+			this.setPreviewMode(false);
+			this.setBusy(true, 'Queued...');
+
+			try {
+				const response = await this.request('blurFaces', {
+					assetId: this.assetId,
+				});
+				this.token = response.token || '';
+				this.jobId = response.jobId || '';
+
+				if (response.queued || this.token) {
+					this.poll();
+					return;
+				}
+
+				this.applyPreview({ ...response, operation: 'blurFaces' });
+			} catch (error) {
+				this.setBusy(false);
+				this.showError(error);
+			}
+		}
+
 		async poll() {
 			window.clearTimeout(this.pollTimer);
 
@@ -876,6 +918,7 @@
 					jobId: this.jobId,
 					uploadRepairToken: this.repairToken,
 				});
+				this.operation = response.operation || this.operation;
 
 				if (response.status === 'complete') {
 					this.applyPreview(response);
@@ -883,7 +926,8 @@
 				}
 
 				if (response.status === 'failed') {
-					throw new Error(response.message || response.previousError || 'Enhancement failed.');
+					const fallback = this.operation === 'blurFaces' ? 'Face blur failed.' : 'Enhancement failed.';
+					throw new Error(response.message || response.previousError || fallback);
 				}
 
 				if (response.status === 'canceled') {
@@ -892,9 +936,9 @@
 					return;
 				}
 
-				const label = response.status === 'running'
-					? 'Running'
-					: (response.progressLabel || 'Queued');
+				const label = response.progressLabel || (response.status === 'running'
+					? (this.operation === 'blurFaces' ? 'Blurring faces' : 'Running')
+					: 'Queued');
 				this.setBusy(true, label, response.status === 'running');
 				this.pollTimer = window.setTimeout(() => this.poll(), 1500);
 			} catch (error) {
@@ -930,7 +974,7 @@
 
 		async keep() {
 			if (!this.previewId) {
-				this.showError(new Error('Enhanced preview asset not found.'));
+				this.showError(new Error('Preview asset not found.'));
 				return;
 			}
 
@@ -964,7 +1008,7 @@
 				const imageUrl = response.imageUrl || this.enhancedUrl;
 				refreshAssetFieldImage(this.assetId, withCacheBuster(imageUrl), this.card);
 				if (window.Craft?.cp) {
-					Craft.cp.displayNotice('Enhanced image saved.');
+					Craft.cp.displayNotice(this.operation === 'blurFaces' ? 'Blurred image saved.' : 'Enhanced image saved.');
 				}
 				this.close();
 			} catch (error) {
@@ -1010,11 +1054,12 @@
 		applyPreview(response) {
 			const enhancedUrl = response.enhancedUrl || response.imageUrl || response.assetUrl || response.url;
 			if (!enhancedUrl) {
-				throw new Error('The enhancement response did not include an enhanced image URL.');
+				throw new Error('The image-processing response did not include a preview URL.');
 			}
 
 			this.previewId = response.previewId || response.previewToken || response.enhancedAssetId || response.tempAssetId || '';
 			this.token = response.token || this.token;
+			this.operation = response.operation || this.operation;
 			this.enhancedUrl = enhancedUrl;
 			this.enhancedImage.src = enhancedUrl;
 			this.setBusy(false);
@@ -1030,6 +1075,7 @@
 
 		setBusy(isBusy, label = '', includeCounter = false) {
 			this.enhanceButton.disabled = isBusy;
+			this.blurFacesButton.disabled = isBusy;
 			this.keepButton.disabled = isBusy;
 			this.discardButton.disabled = isBusy;
 			this.cancelButton.disabled = false;
@@ -1042,6 +1088,7 @@
 			this.closeButton.disabled = isProcessing;
 			this.localRepairButton.disabled = isProcessing || !this.uploadRepair?.repairable;
 			this.enhanceButton.disabled = isProcessing;
+			this.blurFacesButton.disabled = true;
 			this.cancelButton.disabled = true;
 			this.keepButton.disabled = true;
 			this.discardButton.disabled = true;
@@ -1053,6 +1100,7 @@
 		setPreviewProcessing(isProcessing, label = '') {
 			this.closeButton.disabled = isProcessing;
 			this.enhanceButton.disabled = true;
+			this.blurFacesButton.disabled = true;
 			this.cancelButton.disabled = true;
 			this.keepButton.disabled = isProcessing;
 			this.discardButton.disabled = isProcessing;
@@ -1064,6 +1112,7 @@
 			if (this.uploadRepair) {
 				this.toggleButton(this.localRepairButton, state !== 'idle');
 				this.toggleButton(this.enhanceButton, state !== 'idle');
+				this.toggleButton(this.blurFacesButton, true);
 				this.toggleButton(this.cancelButton, state !== 'busy');
 				this.toggleButton(this.keepButton, state !== 'preview');
 				this.toggleButton(this.discardButton, state !== 'preview');
@@ -1072,6 +1121,7 @@
 			}
 
 			this.toggleButton(this.enhanceButton, state !== 'idle');
+			this.toggleButton(this.blurFacesButton, state !== 'idle');
 			this.toggleButton(this.cancelButton, state !== 'busy');
 			this.toggleButton(this.keepButton, state !== 'preview');
 			this.toggleButton(this.discardButton, state !== 'preview');

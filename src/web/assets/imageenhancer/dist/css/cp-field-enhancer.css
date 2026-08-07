@@ -26,6 +26,8 @@
 .image-enhancer-cp-modal {
 	box-sizing: border-box;
 	width: min(920px, calc(100vw - 96px));
+	height: min(760px, calc(100vh - 72px));
+	height: min(760px, calc(100dvh - 72px));
 	max-height: min(760px, calc(100vh - 72px));
 	overflow: hidden;
 }
@@ -42,9 +44,17 @@
 	box-sizing: border-box;
 	display: flex;
 	flex-direction: column;
-	max-height: min(760px, calc(100vh - 72px));
-	padding: 20px;
-	overflow: auto;
+	height: 100%;
+	min-height: 0;
+	overflow: hidden;
+}
+
+.image-enhancer-cp-body {
+	flex: 1 1 auto;
+	min-height: 0;
+	padding: 20px 20px 16px;
+	overflow-y: auto;
+	overscroll-behavior: contain;
 }
 
 .image-enhancer-cp-header {
@@ -290,15 +300,18 @@
 }
 
 .image-enhancer-cp-actions {
-	position: sticky;
-	bottom: -20px;
+	position: relative;
+	flex: 0 0 auto;
 	display: flex;
 	flex-wrap: wrap;
 	justify-content: flex-end;
 	gap: 8px;
-	margin: 16px -20px -20px;
-	padding: 14px 20px 20px;
+	margin: 0;
+	padding: 14px 20px max(14px, env(safe-area-inset-bottom));
+	border-top: 1px solid #d8dee6;
 	background: #fff;
+	box-shadow: 0 -8px 18px rgba(32, 42, 51, 0.06);
+	z-index: 2;
 }
 
 .image-enhancer-cp-is-hidden {
@@ -314,6 +327,8 @@
 @media (max-width: 640px) {
 	.image-enhancer-cp-modal {
 		width: calc(100vw - 20px);
+		height: calc(100vh - 20px);
+		height: calc(100dvh - 20px);
 		max-height: calc(100vh - 20px);
 	}
 
@@ -321,13 +336,12 @@
 		top: 10px;
 	}
 
-	.image-enhancer-cp-shell {
-		padding: 16px;
-		max-height: calc(100vh - 20px);
+	.image-enhancer-cp-body {
+		padding: 16px 16px 12px;
 	}
 
 	.image-enhancer-cp-provider {
-		grid-template-columns: 1fr;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
 	}
 
 	.image-enhancer-upload-summary {
@@ -349,8 +363,20 @@
 	}
 
 	.image-enhancer-cp-actions {
-		bottom: -16px;
-		margin: 14px -16px -16px;
-		padding: 12px 16px 16px;
+		padding: 12px 16px max(12px, env(safe-area-inset-bottom));
+	}
+
+	.image-enhancer-cp-actions .btn {
+		flex: 1 1 calc(50% - 4px);
+		min-width: 0;
+	}
+}
+
+@media (max-height: 620px) {
+	.image-enhancer-cp-single,
+	.image-enhancer-cp-compare,
+	.image-enhancer-cp-single img,
+	.image-enhancer-cp-compare img {
+		height: clamp(180px, 36dvh, 280px);
 	}
 }
