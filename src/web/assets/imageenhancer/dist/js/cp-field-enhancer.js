@@ -453,9 +453,15 @@
 			this.previewId = '';
 			this.enhancedUrl = '';
 			this.operation = 'enhance';
+			this.isManualBlurMode = false;
+			this.manualBlurRegions = [];
+			this.currentManualBlurRegion = null;
+			this.manualBlurDrawStart = null;
+			this.manualBlurRegionSequence = 0;
 			this.pollTimer = null;
 			this.statusStartedAt = 0;
 			this.statusTickTimer = null;
+			this.manualBlurResizeHandler = () => this.renderManualBlurRegions();
 			this.selectedProvider = this.getInitialProvider();
 			this.selectedModel = this.getInitialModel(this.selectedProvider);
 			this.modal = null;
@@ -530,6 +536,7 @@
 				'  <div class="image-enhancer-cp-stage">',
 				'    <div class="image-enhancer-cp-single" data-single>',
 				'      <img data-original alt="">',
+				'      <div class="image-enhancer-cp-manual-blur-layer" data-manual-blur-layer title="Drag around each face or area to blur" hidden></div>',
 				'    </div>',
 				'    <div class="image-enhancer-cp-compare" data-compare hidden>',
 				'      <img data-compare-original alt="">',
@@ -553,6 +560,10 @@
 				'      <button type="button" class="btn submit image-enhancer-cp-is-hidden" data-local-repair>Resize locally</button>',
 				'      <button type="button" class="btn submit" data-enhance>Enhance</button>',
 				'      <button type="button" class="btn" data-blur-faces>Blur faces</button>',
+				'      <button type="button" class="btn" data-custom-blur>Custom blur</button>',
+				'      <button type="button" class="btn submit image-enhancer-cp-is-hidden" data-apply-custom-blur>Apply blur</button>',
+				'      <button type="button" class="btn image-enhancer-cp-is-hidden" data-undo-custom-blur>Undo</button>',
+				'      <button type="button" class="btn image-enhancer-cp-is-hidden" data-cancel-custom-blur>Cancel</button>',
 				'      <button type="button" class="btn image-enhancer-cp-is-hidden" data-cancel>Cancel</button>',
 				'      <button type="button" class="btn submit image-enhancer-cp-is-hidden" data-keep>Save replacement</button>',
 				'      <button type="button" class="btn image-enhancer-cp-is-hidden" data-discard>Discard</button>',
@@ -567,6 +578,7 @@
 			this.compareOriginalImage = root.querySelector('[data-compare-original]');
 			this.enhancedImage = root.querySelector('[data-enhanced]');
 			this.single = root.querySelector('[data-single]');
+			this.manualBlurLayer = root.querySelector('[data-manual-blur-layer]');
 			this.compare = root.querySelector('[data-compare]');
 			this.enhancedWrap = root.querySelector('[data-enhanced-wrap]');
 			this.divider = root.querySelector('[data-divider]');
@@ -576,6 +588,10 @@
 			this.error = root.querySelector('[data-error]');
 			this.enhanceButton = root.querySelector('[data-enhance]');
 			this.blurFacesButton = root.querySelector('[data-blur-faces]');
+			this.customBlurButton = root.querySelector('[data-custom-blur]');
+			this.applyCustomBlurButton = root.querySelector('[data-apply-custom-blur]');
+			this.undoCustomBlurButton = root.querySelector('[data-undo-custom-blur]');
+			this.cancelCustomBlurButton = root.querySelector('[data-cancel-custom-blur]');
 			this.localRepairButton = root.querySelector('[data-local-repair]');
 			this.cancelButton = root.querySelector('[data-cancel]');
 			this.keepButton = root.querySelector('[data-keep]');
@@ -589,17 +605,28 @@
 			this.providerSelect = root.querySelector('[data-provider]');
 			this.modelSelect = root.querySelector('[data-model]');
 
-			this.originalImage.src = this.originalUrl;
-			this.compareOriginalImage.src = this.originalUrl;
 			this.range.addEventListener('input', () => this.updateComparison());
 			root.querySelector('[data-local-repair]').addEventListener('click', () => this.repairLocally());
 			root.querySelector('[data-enhance]').addEventListener('click', () => this.enhance());
 			root.querySelector('[data-blur-faces]').addEventListener('click', () => this.blurFaces());
+			root.querySelector('[data-custom-blur]').addEventListener('click', () => this.startManualBlurMode());
+			root.querySelector('[data-apply-custom-blur]').addEventListener('click', () => this.applyManualBlur());
+			root.querySelector('[data-undo-custom-blur]').addEventListener('click', () => this.undoManualBlurRegion());
+			root.querySelector('[data-cancel-custom-blur]').addEventListener('click', () => this.cancelManualBlurMode());
 			root.querySelector('[data-cancel]').addEventListener('click', () => this.cancel());
 			root.querySelector('[data-keep]').addEventListener('click', () => this.keep());
 			root.querySelector('[data-discard]').addEventListener('click', () => this.discard());
 			root.querySelector('[data-discard-upload]').addEventListener('click', () => this.discardUpload());
 			this.closeButton.addEventListener('click', () => this.requestClose());
+			this.originalImage.addEventListener('load', this.manualBlurResizeHandler);
+			this.manualBlurLayer.addEventListener('pointerdown', (event) => this.startManualBlurDraw(event));
+			this.manualBlurLayer.addEventListener('pointermove', (event) => this.moveManualBlurDraw(event));
+			this.manualBlurLayer.addEventListener('pointerup', (event) => this.finishManualBlurDraw(event));
+			this.manualBlurLayer.addEventListener('pointercancel', (event) => this.cancelManualBlurDraw(event));
+			this.manualBlurLayer.addEventListener('pointerleave', (event) => this.handleManualBlurPointerLeave(event));
+			window.addEventListener('resize', this.manualBlurResizeHandler);
+			this.originalImage.src = this.originalUrl;
+			this.compareOriginalImage.src = this.originalUrl;
 
 			if (this.uploadRepair) {
 				this.enhanceButton.textContent = 'Resize & Enhance';
@@ -826,7 +853,7 @@
 				if (['queued', 'running', 'pending'].includes(response.status) && response.token) {
 					this.token = response.token;
 					this.jobId = response.jobId || '';
-					this.operation = response.operation || 'enhance';
+					this.operation = this.resolveOperation(response);
 					this.setBusy(true, response.progressLabel || 'Queued');
 					this.poll();
 					return;
@@ -912,8 +939,115 @@
 			}
 		}
 
+		startManualBlurMode(preserveRegions = false) {
+			if (this.uploadRepair) {
+				return;
+			}
+
+			this.clearError();
+			if (!preserveRegions) {
+				this.resetManualBlurDrawing();
+			}
+			this.isManualBlurMode = true;
+			this.manualBlurLayer.hidden = false;
+			this.providerControls.hidden = true;
+			this.setActionState('manual');
+			this.setStatus('Drag around each face or area to blur. You can select multiple areas.', false);
+			this.renderManualBlurRegions();
+		}
+
+		cancelManualBlurMode() {
+			if (!this.isManualBlurMode) {
+				return;
+			}
+
+			this.clearError();
+			this.hideManualBlurMode(true);
+			this.setActionState('idle');
+			this.setStatus('', false);
+		}
+
+		undoManualBlurRegion() {
+			if (!this.isManualBlurMode || this.manualBlurRegions.length === 0) {
+				return;
+			}
+
+			this.manualBlurRegions.pop();
+			this.renderManualBlurRegions();
+		}
+
+		async applyManualBlur() {
+			if (!this.isManualBlurMode || this.manualBlurRegions.length === 0) {
+				return;
+			}
+
+			const manualFaces = this.manualBlurRegions.map(({ x, y, width, height }) => ({
+				x,
+				y,
+				width,
+				height,
+				source: 'manual',
+			}));
+
+			this.clearError();
+			this.operation = 'manualBlurFaces';
+			this.token = '';
+			this.jobId = '';
+			this.previewId = '';
+			this.enhancedUrl = '';
+			this.hideManualBlurMode(false, false);
+			this.setBusy(true, 'Queued...');
+
+			try {
+				const response = await this.request('blurFaces', {
+					assetId: this.assetId,
+					manualFaces: JSON.stringify(manualFaces),
+				});
+				this.token = response.token || '';
+				this.jobId = response.jobId || '';
+
+				if (response.queued || this.token) {
+					this.poll();
+					return;
+				}
+
+				this.applyPreview({
+					...response,
+					operation: 'manualBlurFaces',
+					blurMode: 'manual',
+				});
+			} catch (error) {
+				this.setBusy(false);
+				this.startManualBlurMode(true);
+				this.showError(error);
+			}
+		}
+
+		hideManualBlurMode(resetRegions = false, restoreProviderControls = true) {
+			this.isManualBlurMode = false;
+			this.manualBlurLayer.hidden = true;
+			if (restoreProviderControls) {
+				this.providerControls.hidden = !config.providerChoiceEnabled;
+			}
+			this.currentManualBlurRegion = null;
+			this.manualBlurDrawStart = null;
+			if (resetRegions) {
+				this.resetManualBlurDrawing();
+			}
+		}
+
+		resumeManualBlurMode() {
+			if (this.operation !== 'manualBlurFaces' || this.manualBlurRegions.length === 0) {
+				return false;
+			}
+
+			this.startManualBlurMode(true);
+			return true;
+		}
+
 		async poll() {
 			window.clearTimeout(this.pollTimer);
+			let shouldResumeManualBlur = false;
 
 			try {
 				const response = await this.request('status', {
@@ -922,7 +1056,7 @@
 					jobId: this.jobId,
 					uploadRepairToken: this.repairToken,
 				});
-				this.operation = response.operation || this.operation;
+				this.operation = this.resolveOperation(response);
 
 				if (response.status === 'complete') {
 					this.applyPreview(response);
@@ -930,23 +1064,29 @@
 				}
 
 				if (response.status === 'failed') {
-					const fallback = this.operation === 'blurFaces' ? 'Face blur failed.' : 'Enhancement failed.';
+					shouldResumeManualBlur = this.operation === 'manualBlurFaces';
+					const fallback = this.isBlurOperation() ? 'Face blur failed.' : 'Enhancement failed.';
 					throw new Error(response.message || response.previousError || fallback);
 				}
 
 				if (response.status === 'canceled') {
 					this.setBusy(false);
-					this.setStatus('Canceled', false);
+					if (!this.resumeManualBlurMode()) {
+						this.setStatus('Canceled', false);
+					}
 					return;
 				}
 
 				const label = response.progressLabel || (response.status === 'running'
-					? (this.operation === 'blurFaces' ? 'Blurring faces' : 'Running')
+					? (this.isBlurOperation() ? 'Blurring faces' : 'Running')
 					: 'Queued');
 				this.setBusy(true, label, response.status === 'running');
 				this.pollTimer = window.setTimeout(() => this.poll(), 1500);
 			} catch (error) {
 				this.setBusy(false);
+				if (shouldResumeManualBlur) {
+					this.resumeManualBlurMode();
+				}
 				this.showError(error);
 			}
 		}
@@ -954,9 +1094,11 @@
 		async cancel() {
 			if (!this.token) {
 				this.setBusy(false);
+				this.resumeManualBlurMode();
 				return;
 			}
 
+			const shouldResumeManualBlur = this.operation === 'manualBlurFaces';
 			this.clearError();
 			this.setBusy(true, 'Canceling...');
 
@@ -969,7 +1111,9 @@
 				});
 				window.clearTimeout(this.pollTimer);
 				this.setBusy(false);
-				this.setStatus('Canceled', false);
+				if (!shouldResumeManualBlur || !this.resumeManualBlurMode()) {
+					this.setStatus('Canceled', false);
+				}
 			} catch (error) {
 				this.setBusy(false);
 				this.showError(error);
@@ -1012,7 +1156,7 @@
 				const imageUrl = response.imageUrl || this.enhancedUrl;
 				refreshAssetFieldImage(this.assetId, withCacheBuster(imageUrl), this.card);
 				if (window.Craft?.cp) {
-					Craft.cp.displayNotice(this.operation === 'blurFaces' ? 'Blurred image saved.' : 'Enhanced image saved.');
+					Craft.cp.displayNotice(this.isBlurOperation() ? 'Blurred image saved.' : 'Enhanced image saved.');
 				}
 				this.close();
 			} catch (error) {
@@ -1063,9 +1207,10 @@
 
 			this.previewId = response.previewId || response.previewToken || response.enhancedAssetId || response.tempAssetId || '';
 			this.token = response.token || this.token;
-			this.operation = response.operation || this.operation;
+			this.operation = this.resolveOperation(response);
 			this.enhancedUrl = enhancedUrl;
 			this.enhancedImage.src = enhancedUrl;
+			this.hideManualBlurMode(true);
 			this.setBusy(false);
 			this.setPreviewMode(true);
 			this.updateComparison();
@@ -1080,6 +1225,10 @@
 		setBusy(isBusy, label = '', includeCounter = false) {
 			this.enhanceButton.disabled = isBusy;
 			this.blurFacesButton.disabled = isBusy;
+			this.customBlurButton.disabled = isBusy;
+			this.applyCustomBlurButton.disabled = isBusy || this.manualBlurRegions.length === 0;
+			this.undoCustomBlurButton.disabled = isBusy || this.manualBlurRegions.length === 0;
+			this.cancelCustomBlurButton.disabled = isBusy;
 			this.keepButton.disabled = isBusy;
 			this.discardButton.disabled = isBusy;
 			this.cancelButton.disabled = false;
@@ -1093,6 +1242,10 @@
 			this.localRepairButton.disabled = isProcessing || !this.uploadRepair?.repairable;
 			this.enhanceButton.disabled = isProcessing;
 			this.blurFacesButton.disabled = true;
+			this.customBlurButton.disabled = true;
+			this.applyCustomBlurButton.disabled = true;
+			this.undoCustomBlurButton.disabled = true;
+			this.cancelCustomBlurButton.disabled = true;
 			this.cancelButton.disabled = true;
 			this.keepButton.disabled = true;
 			this.discardButton.disabled = true;
@@ -1105,6 +1258,10 @@
 			this.closeButton.disabled = isProcessing;
 			this.enhanceButton.disabled = true;
 			this.blurFacesButton.disabled = true;
+			this.customBlurButton.disabled = true;
+			this.applyCustomBlurButton.disabled = true;
+			this.undoCustomBlurButton.disabled = true;
+			this.cancelCustomBlurButton.disabled = true;
 			this.cancelButton.disabled = true;
 			this.keepButton.disabled = isProcessing;
 			this.discardButton.disabled = isProcessing;
@@ -1117,6 +1274,10 @@
 				this.toggleButton(this.localRepairButton, state !== 'idle');
 				this.toggleButton(this.enhanceButton, state !== 'idle');
 				this.toggleButton(this.blurFacesButton, true);
+				this.toggleButton(this.customBlurButton, true);
+				this.toggleButton(this.applyCustomBlurButton, true);
+				this.toggleButton(this.undoCustomBlurButton, true);
+				this.toggleButton(this.cancelCustomBlurButton, true);
 				this.toggleButton(this.cancelButton, state !== 'busy');
 				this.toggleButton(this.keepButton, state !== 'preview');
 				this.toggleButton(this.discardButton, state !== 'preview');
@@ -1126,9 +1287,28 @@
 
 			this.toggleButton(this.enhanceButton, state !== 'idle');
 			this.toggleButton(this.blurFacesButton, state !== 'idle');
+			this.toggleButton(this.customBlurButton, state !== 'idle');
+			this.toggleButton(this.applyCustomBlurButton, state !== 'manual');
+			this.toggleButton(this.undoCustomBlurButton, state !== 'manual');
+			this.toggleButton(this.cancelCustomBlurButton, state !== 'manual');
 			this.toggleButton(this.cancelButton, state !== 'busy');
 			this.toggleButton(this.keepButton, state !== 'preview');
 			this.toggleButton(this.discardButton, state !== 'preview');
+		}
+
+		resolveOperation(response) {
+			if (response.blurMode === 'manual') {
+				return 'manualBlurFaces';
+			}
+			if (this.operation === 'manualBlurFaces' && response.operation === 'blurFaces') {
+				return this.operation;
+			}
+
+			return response.operation || this.operation;
+		}
+
+		isBlurOperation() {
+			return ['blurFaces', 'manualBlurFaces'].includes(this.operation);
 		}
 
 		toggleButton(button, isHidden) {
@@ -1167,6 +1347,186 @@
 			const value = this.range.value || 50;
 			this.enhancedWrap.style.clipPath = `inset(0 ${100 - Number(value)}% 0 0)`;
 			this.divider.style.left = `${value}%`;
+		}
+
+		startManualBlurDraw(event) {
+			if (!this.isManualBlurMode || event.button !== 0) {
+				return;
+			}
+
+			const point = this.getManualBlurPoint(event, false);
+			if (!point) {
+				return;
+			}
+
+			event.preventDefault();
+			this.manualBlurDrawStart = point;
+			this.currentManualBlurRegion = {
+				id: `drawing-${++this.manualBlurRegionSequence}`,
+				x: point.x,
+				y: point.y,
+				width: 0,
+				height: 0,
+				isDrawing: true,
+			};
+			this.manualBlurLayer.setPointerCapture?.(event.pointerId);
+			this.renderManualBlurRegions();
+		}
+
+		moveManualBlurDraw(event) {
+			if (!this.manualBlurDrawStart || !this.currentManualBlurRegion) {
+				return;
+			}
+
+			event.preventDefault();
+			const point = this.getManualBlurPoint(event, true);
+			if (!point) {
+				return;
+			}
+
+			this.currentManualBlurRegion = this.createManualBlurRegion(this.manualBlurDrawStart, point, true);
+			this.renderManualBlurRegions();
+		}
+
+		finishManualBlurDraw(event) {
+			if (!this.manualBlurDrawStart || !this.currentManualBlurRegion) {
+				return;
+			}
+
+			event.preventDefault();
+			const point = this.getManualBlurPoint(event, true);
+			const region = point ? this.createManualBlurRegion(this.manualBlurDrawStart, point, false) : null;
+
+			if (region && region.width >= 8 && region.height >= 8) {
+				this.manualBlurRegions.push({
+					...region,
+					id: `manual-${++this.manualBlurRegionSequence}`,
+				});
+			}
+
+			this.cancelManualBlurDraw(event);
+		}
+
+		cancelManualBlurDraw(event) {
+			if (event?.pointerId !== undefined && this.manualBlurLayer.hasPointerCapture?.(event.pointerId)) {
+				try {
+					this.manualBlurLayer.releasePointerCapture?.(event.pointerId);
+				} catch (error) {
+					// The browser may already have released capture after a canceled gesture.
+				}
+			}
+
+			this.manualBlurDrawStart = null;
+			this.currentManualBlurRegion = null;
+			this.renderManualBlurRegions();
+		}
+
+		handleManualBlurPointerLeave(event) {
+			if (!this.manualBlurDrawStart || this.manualBlurLayer.hasPointerCapture?.(event.pointerId)) {
+				return;
+			}
+
+			this.cancelManualBlurDraw(event);
+		}
+
+		createManualBlurRegion(start, end, isDrawing) {
+			return {
+				id: isDrawing ? 'drawing' : '',
+				x: Math.min(start.x, end.x),
+				y: Math.min(start.y, end.y),
+				width: Math.abs(end.x - start.x),
+				height: Math.abs(end.y - start.y),
+				isDrawing,
+			};
+		}
+
+		getManualBlurPoint(event, clampToImage) {
+			const metrics = this.getManualBlurImageMetrics();
+			if (!metrics) {
+				return null;
+			}
+
+			const x = event.clientX - metrics.rect.left - metrics.offsetX;
+			const y = event.clientY - metrics.rect.top - metrics.offsetY;
+			if (!clampToImage && (x < 0 || y < 0 || x > metrics.displayWidth || y > metrics.displayHeight)) {
+				return null;
+			}
+
+			return {
+				x: this.clampManualBlurCoordinate((x / metrics.displayWidth) * 1000),
+				y: this.clampManualBlurCoordinate((y / metrics.displayHeight) * 1000),
+			};
+		}
+
+		getManualBlurImageMetrics() {
+			const rect = this.originalImage?.getBoundingClientRect();
+			const naturalWidth = this.originalImage?.naturalWidth || 0;
+			const naturalHeight = this.originalImage?.naturalHeight || 0;
+			if (!rect?.width || !rect.height || !naturalWidth || !naturalHeight) {
+				return null;
+			}
+
+			const scale = Math.min(rect.width / naturalWidth, rect.height / naturalHeight);
+			const displayWidth = naturalWidth * scale;
+			const displayHeight = naturalHeight * scale;
+
+			return {
+				rect,
+				displayWidth,
+				displayHeight,
+				offsetX: (rect.width - displayWidth) / 2,
+				offsetY: (rect.height - displayHeight) / 2,
+			};
+		}
+
+		renderManualBlurRegions() {
+			if (!this.manualBlurLayer) {
+				return;
+			}
+
+			this.manualBlurLayer.replaceChildren();
+			const metrics = this.getManualBlurImageMetrics();
+			const regions = this.currentManualBlurRegion
+				? [...this.manualBlurRegions, this.currentManualBlurRegion]
+				: this.manualBlurRegions;
+
+			if (metrics) {
+				regions.forEach((region) => {
+					const marker = document.createElement('span');
+					marker.className = 'image-enhancer-cp-manual-blur-region';
+					marker.classList.toggle('is-drawing', Boolean(region.isDrawing));
+					marker.setAttribute('aria-hidden', 'true');
+					marker.style.left = `${metrics.offsetX + (region.x / 1000) * metrics.displayWidth}px`;
+					marker.style.top = `${metrics.offsetY + (region.y / 1000) * metrics.displayHeight}px`;
+					marker.style.width = `${(region.width / 1000) * metrics.displayWidth}px`;
+					marker.style.height = `${(region.height / 1000) * metrics.displayHeight}px`;
+					this.manualBlurLayer.appendChild(marker);
+				});
+			}
+
+			this.updateManualBlurButtons();
+		}
+
+		resetManualBlurDrawing() {
+			this.manualBlurRegions = [];
+			this.currentManualBlurRegion = null;
+			this.manualBlurDrawStart = null;
+			this.manualBlurLayer?.replaceChildren();
+			this.updateManualBlurButtons();
+		}
+
+		updateManualBlurButtons() {
+			const hasRegions = this.manualBlurRegions.length > 0;
+			if (this.applyCustomBlurButton) {
+				this.applyCustomBlurButton.disabled = !hasRegions;
+			}
+			if (this.undoCustomBlurButton) {
+				this.undoCustomBlurButton.disabled = !hasRegions;
+			}
+		}
+
+		clampManualBlurCoordinate(value) {
+			return Math.max(0, Math.min(1000, Math.round(value)));
 		}
 
 		async request(action, payload) {
@@ -1223,6 +1583,7 @@
 			void this.cleanupPendingUpload();
 			window.clearTimeout(this.pollTimer);
 			window.clearInterval(this.statusTickTimer);
+			window.removeEventListener('resize', this.manualBlurResizeHandler);
 			this.root?.remove();
 			if (typeof this.onDestroyed === 'function') {
 				this.onDestroyed();

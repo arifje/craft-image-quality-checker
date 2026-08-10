@@ -140,7 +140,7 @@ When manual blur is used, the `blurFaces` payload includes `manualFaces`, an arr
 
 ### Control Panel Asset Fields
 
-The plugin also adds a small **Enhance** action below image assets inside Craft asset fields. Clicking it opens a control-panel modal that can queue either enhancement or automatic face blurring, polls the queue status, shows a before/after slider, and lets the editor save the preview as the replacement file for the existing asset. Saving does not change the relation field value; it replaces the file behind the selected asset. The modal keeps queue feedback and its action footer visible on short and mobile viewports while the preview content scrolls independently. Field-requirement details are only shown when the modal was opened by the invalid-upload assistant.
+The plugin also adds a small **Enhance** action below image assets inside Craft asset fields. Clicking it opens a control-panel modal that can queue enhancement, automatic face blurring, or a custom blur drawn over one or more selected areas. Custom blur supports undo and uses the same queued preview workflow as automatic blur. The modal polls the queue status, shows a before/after slider, and lets the editor save the preview as the replacement file for the existing asset. Saving does not change the relation field value; it replaces the file behind the selected asset. The modal keeps queue feedback and its action footer visible on short and mobile viewports while the preview content scrolls independently. Field-requirement details are only shown when the modal was opened by the invalid-upload assistant.
 
 If **AI image provider** is set to **Choose in frontend**, the modal also shows provider and model selectors and remembers the last selected combination in the browser.
 
