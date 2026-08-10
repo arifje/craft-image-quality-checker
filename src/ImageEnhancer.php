@@ -265,7 +265,11 @@ class ImageEnhancer extends Plugin
 
 	public function queueAssetAnalysis(Asset $asset, ?int $entryId = null): void
 	{
-		if (!$this->runtimeSettings->isQualityCheckEnabled()) {
+		$settings = $this->getSettings();
+		if (
+			!$this->runtimeSettings->isQualityCheckEnabled() ||
+			$settings->imageEnhancementMode === Settings::ENHANCEMENT_DISABLED
+		) {
 			return;
 		}
 

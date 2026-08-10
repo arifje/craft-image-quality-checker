@@ -39,6 +39,14 @@ class AnalyzeImageJob extends BaseJob
 			return;
 		}
 
+		if ($settings->imageEnhancementMode === Settings::ENHANCEMENT_DISABLED) {
+			$this->debugLog($settings, 'Skipping analysis because enhancement mode is disabled', [
+				'assetId' => $this->assetId,
+			]);
+			$this->updateProgress($queue, 1, 'Skipped: enhancement disabled');
+			return;
+		}
+
 		$this->debugLog($settings, 'Job started', [
 			'assetId' => $this->assetId,
 			'entryId' => $this->entryId,

@@ -172,7 +172,7 @@ Select the asset volumes that should be analyzed. Images uploaded to other volum
 7. Configure Slack and/or email notifications if needed.
 8. Upload a JPEG or PNG image asset to a selected volume.
 
-The plugin queues an analysis job immediately after upload. If the returned score is below the configured threshold, enabled enhancement and notifications are run.
+When **Enhancement mode** and **Run quality check on upload** are both enabled, the plugin queues an analysis job immediately after upload. If the returned score is below the configured threshold, enabled enhancement and notifications are run. With enhancement mode disabled, new uploads do not create an automatic analysis job.
 The queue job reports milestone progress while it loads the asset, runs the quality check, enhances/replaces the image, and sends notifications. If runtime prompt overrides are set in **Utilities → Image Enhancer**, queued enhancement and face-blur jobs use those prompts instead of the project-config defaults.
 
 To troubleshoot a queue run, enable debug logging and watch Craft's web log:
