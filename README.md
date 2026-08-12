@@ -1,6 +1,6 @@
 # Image Enhancer
 
-Checks newly uploaded image assets for quality issues such as blur, noise, motion blur, and poor sharpness. The plugin sends the image to OpenAI for analysis and can notify users when the returned quality score is below the configured threshold. Enhanced replacement images can be generated with OpenAI, Grok Imagine, or Google Nano Banana.
+Checks newly uploaded image assets for quality issues such as blur, noise, motion blur, and poor sharpness. The plugin sends the image to OpenAI for analysis and can notify users when the returned quality score is below the configured threshold. Enhanced replacement images and one-off custom edits can be generated with OpenAI, Grok Imagine, or Google Nano Banana.
 
 ## Requirements
 
@@ -48,6 +48,7 @@ Enhancement runs only when an image score is below the notification threshold.
 - **AI image provider**: Choose the provider used for AI enhancement. OpenAI uses the ChatGPT API key from the ChatGPT tab. Grok Imagine and Google Nano Banana use their own API key fields. **Choose in frontend** lets editors choose the provider and model in the frontend enhancement component.
 - **AI tuning levels**: Use simple 1-10 settings for clarity/detail, contrast/depth, color intensity, and noise/artifact cleanup. The selected levels are added to the image prompt so editors can choose a more colorful/contrasty result or a softer, more restrained result.
 - **AI enhancement prompt**: Controls the default prompt used by all AI enhancement providers. This is stored in project config and can be overridden at runtime from the Utility screen.
+- **Custom edits**: Editors can enter a one-off instruction such as `Flip the image horizontally` or `Remove all persons`. A custom edit replaces the standard conservative enhancement prompt for that request, then follows the same queued preview and approval workflow. The prompt is limited to 4,000 characters.
 - **Face blur detection prompt**: Controls the default prompt used by the frontend **Blur faces** action to detect face/head boxes. The API only returns boxes; Imagick applies the anonymization locally. This is stored in project config and can be overridden at runtime from the Utility screen.
 - **Enhancement trigger**: Choose whether enhancement runs only when the quality score is below the threshold, or always runs immediately and skips the quality check.
 - **Enhanced image handling**: Choose whether the enhanced file replaces the original asset, or is added next to the original asset for manual review.
@@ -99,7 +100,9 @@ When this mode is enabled, the settings page shows all provider API key and mode
 
 ### Frontend Image Enhancer Component
 
-The repository includes `imageEnhancer.vue` as a copyable Vue component for article preview pages or headless frontend projects. It displays the image, lets permitted editors queue an enhancement or face-blur preview, polls the queue status, shows a before/after comparison slider, and lets the editor keep, discard, cancel, retry, reset, or hide the enhancement UI.
+The repository includes `imageEnhancer.vue` as a copyable Vue component for article preview pages or headless frontend projects. It displays the image, lets permitted editors queue an enhancement, custom edit, or face-blur preview, polls the queue status, shows a before/after comparison slider, and lets the editor keep, discard, cancel, retry, reset, or hide the enhancement UI.
+
+The **Custom edit** action accepts a one-off generative instruction and uses the selected provider and model. Prompts remain in the currently open component or modal so a failed or canceled request can be adjusted and retried, but they are not stored in browser persistence or returned by the status endpoint. The queue job retains the prompt while it is needed to execute or retry the request.
 
 The **Blur faces** action uses the ChatGPT/OpenAI API key to detect face/head bounding boxes and then applies a fragmented oval anonymization mask locally with Imagick. The **Manual blur** action lets editors draw one or more oval regions on the image; those normalized coordinates are sent directly to the same Imagick blur job and skip AI detection entirely. Both paths create a preview asset first, so editors can compare and decide whether to keep or discard the blurred result.
 
@@ -140,7 +143,7 @@ When manual blur is used, the `blurFaces` payload includes `manualFaces`, an arr
 
 ### Control Panel Asset Fields
 
-The plugin also adds a small **Enhance** action below image assets inside Craft asset fields. Clicking it opens a control-panel modal that can queue enhancement, automatic face blurring, or a custom blur drawn over one or more selected areas. Custom blur supports undo and uses the same queued preview workflow as automatic blur. The modal polls the queue status, shows a before/after slider, and lets the editor save the preview as the replacement file for the existing asset. Saving does not change the relation field value; it replaces the file behind the selected asset. The modal keeps queue feedback and its action footer visible on short and mobile viewports while the preview content scrolls independently. Field-requirement details are only shown when the modal was opened by the invalid-upload assistant.
+The plugin also adds a small **Enhance** action below image assets inside Craft asset fields. Clicking it opens a control-panel modal that can queue a standard enhancement, a custom edit, automatic face blurring, or a custom blur drawn over one or more selected areas. Custom blur supports undo and uses the same queued preview workflow as automatic blur. The modal polls the queue status, shows a before/after slider, and lets the editor save the preview as the replacement file for the existing asset. Saving does not change the relation field value; it replaces the file behind the selected asset. The modal keeps queue feedback and its action footer visible on short and mobile viewports while the preview content scrolls independently. Field-requirement details are only shown when the modal was opened by the invalid-upload assistant.
 
 If **AI image provider** is set to **Choose in frontend**, the modal also shows provider and model selectors and remembers the last selected combination in the browser.
 
@@ -190,4 +193,5 @@ Debug output includes the PHP process user, original asset ownership, temporary 
 - Remote filesystems may need additional handling before their assets can be analyzed.
 - The Vue component is GraphQL-ready, but the plugin currently ships Craft action endpoints only; GraphQL schema/resolvers still need to be added before `api-transport="graphql"` can be used.
 - AI enhancement can alter image details more than Imagick safe optimization, depending on the selected provider, configured prompt, and model output.
+- Custom edits are generative and can intentionally alter image content or composition. Always review the before/after preview before keeping the result.
 - The upload requirement assistant repairs numeric width, height, and file-size selection conditions while preserving the source aspect ratio. Other failed selection-condition rules remain non-repairable.

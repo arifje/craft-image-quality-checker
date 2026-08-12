@@ -31,7 +31,15 @@ class ArticleImageController extends Controller
 
 		$settings = ImageEnhancer::getInstance()->getSettings();
 		$enhancementService = ImageEnhancer::getInstance()->aiImageEnhancement;
+		$customPrompt = $this->getCustomEnhancementPromptForRequest();
+		if ($customPrompt === false) {
+			return $this->asJsonFailure('Enter a custom edit prompt of no more than 4000 characters.');
+		}
+		$operation = $customPrompt !== null ? 'customEnhance' : 'enhance';
 		$repairToken = (string) Craft::$app->getRequest()->getParam('uploadRepairToken');
+		if ($repairToken !== '' && $customPrompt !== null) {
+			return $this->asJsonFailure('Custom edits are not available while repairing an invalid upload.');
+		}
 		$repairTarget = null;
 		if ($repairToken !== '') {
 			$repairTarget = ImageEnhancer::getInstance()->assetRequirements->getRepairTargetDimensions(
@@ -61,6 +69,7 @@ class ArticleImageController extends Controller
 			$this->setEnhancementStatus($token, [
 				'status' => 'queued',
 				'assetId' => $asset->id,
+				'operation' => $operation,
 				'progress' => 0,
 				'progressLabel' => 'Queued',
 			]);
@@ -70,12 +79,14 @@ class ArticleImageController extends Controller
 				'token' => $token,
 				'imageEnhancementProvider' => $providerOptions['provider'] ?? null,
 				'imageEnhancementModel' => $providerOptions['model'] ?? null,
+				'customPrompt' => $customPrompt,
 				'targetWidth' => $repairTarget['width'] ?? null,
 				'targetHeight' => $repairTarget['height'] ?? null,
 			]));
 			$this->setEnhancementStatus($token, [
 				'status' => 'queued',
 				'assetId' => $asset->id,
+				'operation' => $operation,
 				'jobId' => $jobId,
 				'progress' => 0,
 				'progressLabel' => 'Queued',
@@ -85,6 +96,7 @@ class ArticleImageController extends Controller
 				'success' => true,
 				'queued' => true,
 				'assetId' => $asset->id,
+				'operation' => $operation,
 				'jobId' => $jobId,
 				'token' => $token,
 				'statusUrl' => UrlHelper::actionUrl('craft-image-enhancer/article-image/status'),
@@ -95,6 +107,22 @@ class ArticleImageController extends Controller
 			Craft::error('ImageEnhancer: Article image enhancement queueing failed: ' . $e->getMessage(), __METHOD__);
 			return $this->asJsonFailure('Could not queue enhancement: ' . $e->getMessage());
 		}
+	}
+
+	private function getCustomEnhancementPromptForRequest(): string|false|null
+	{
+		$value = Craft::$app->getRequest()->getBodyParam('customPrompt');
+		if ($value === null) {
+			return null;
+		}
+		if (!is_string($value)) {
+			return false;
+		}
+
+		$prompt = trim($value);
+		$length = function_exists('mb_strlen') ? mb_strlen($prompt) : strlen($prompt);
+
+		return $prompt !== '' && $length <= 4000 ? $prompt : false;
 	}
 
 	public function actionBlurFaces(): Response

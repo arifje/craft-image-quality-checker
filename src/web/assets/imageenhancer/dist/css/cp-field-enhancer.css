@@ -105,6 +105,7 @@
 
 .image-enhancer-upload-summary[hidden],
 .image-enhancer-cp-provider[hidden],
+.image-enhancer-cp-custom-edit[hidden],
 .image-enhancer-cp-manual-blur-layer[hidden],
 .image-enhancer-cp-status[hidden],
 .image-enhancer-cp-error[hidden] {
@@ -178,6 +179,35 @@
 
 .image-enhancer-cp-provider select {
 	width: 100%;
+}
+
+.image-enhancer-cp-custom-edit {
+	margin-bottom: 12px;
+	padding: 12px;
+	border: 1px solid #d8dee6;
+	border-radius: 6px;
+	background: #f7f8fa;
+}
+
+.image-enhancer-cp-custom-edit label {
+	display: block;
+	margin-bottom: 6px;
+	font-size: 13px;
+	font-weight: 700;
+}
+
+.image-enhancer-cp-custom-edit textarea {
+	box-sizing: border-box;
+	display: block;
+	width: 100%;
+	min-height: 82px;
+	resize: vertical;
+}
+
+.image-enhancer-cp-custom-edit p {
+	margin: 6px 0 0;
+	color: #66727f;
+	font-size: 12px;
 }
 
 .image-enhancer-cp-stage {

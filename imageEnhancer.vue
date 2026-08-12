@@ -88,6 +88,7 @@
 			:class="{
 				'has-provider-controls': canChooseProvider && !hasPendingPreview && !isEnhancing && !isManualBlurMode,
 				'is-manual-blur': isManualBlurMode,
+				'is-custom-edit': isCustomEditMode,
 			}"
 		>
 			<div v-if="canChooseProvider && !hasPendingPreview && !isEnhancing && !isManualBlurMode" class="article-image-provider-controls">
@@ -128,7 +129,7 @@
 				<span>{{ isCanceling ? cancelingLabel : cancelLabel }}</span>
 			</button>
 
-			<template v-else-if="errorMessage && !hasPendingPreview">
+			<template v-else-if="errorMessage && !hasPendingPreview && !isCustomEditMode">
 				<button
 					type="button"
 					class="uk-button uk-button-small uk-button-primary article-image-button article-image-button-primary"
@@ -177,6 +178,38 @@
 				</button>
 			</div>
 
+			<div v-else-if="isCustomEditMode" class="article-image-custom-edit">
+				<label class="article-image-custom-edit-field">
+					<span>{{ customEditPromptLabel }}</span>
+					<textarea
+						v-model="customPrompt"
+						class="article-image-custom-edit-input"
+						rows="3"
+						maxlength="4000"
+						:placeholder="customEditPlaceholder"
+						@keydown="handleCustomPromptKeydown"
+					></textarea>
+				</label>
+				<div class="article-image-action-buttons">
+					<button
+						type="button"
+						class="uk-button uk-button-small uk-button-primary article-image-button article-image-button-primary"
+						:disabled="isBusy || !customPrompt.trim()"
+						@click.prevent="applyCustomEnhancement()"
+					>
+						<span>{{ customEditApplyLabel }}</span>
+					</button>
+					<button
+						type="button"
+						class="uk-button uk-button-small uk-button-default article-image-button article-image-button-secondary"
+						:disabled="isBusy"
+						@click.prevent="cancelCustomEditMode()"
+					>
+						<span>{{ customEditCancelLabel }}</span>
+					</button>
+				</div>
+			</div>
+
 			<div v-else-if="!hasPendingPreview" class="article-image-action-buttons">
 				<button
 					type="button"
@@ -186,6 +219,14 @@
 				>
 					<span v-if="isEnhancing" class="article-image-spinner" aria-hidden="true"></span>
 					<span>{{ isEnhancing ? enhancingLabel : enhanceLabel }}</span>
+				</button>
+				<button
+					type="button"
+					class="uk-button uk-button-small uk-button-default article-image-button article-image-button-secondary"
+					:disabled="isBusy"
+					@click.prevent="startCustomEditMode()"
+				>
+					<span>{{ customEditLabel }}</span>
 				</button>
 				<button
 					type="button"
@@ -442,6 +483,30 @@ const props = defineProps({
 		type: String,
 		default: 'Enhancing...',
 	},
+	customEditLabel: {
+		type: String,
+		default: 'Custom edit',
+	},
+	customEditingLabel: {
+		type: String,
+		default: 'Applying edit...',
+	},
+	customEditPromptLabel: {
+		type: String,
+		default: 'Custom edit instructions',
+	},
+	customEditPlaceholder: {
+		type: String,
+		default: 'For example: Flip the image horizontally, or remove all persons.',
+	},
+	customEditApplyLabel: {
+		type: String,
+		default: 'Apply edit',
+	},
+	customEditCancelLabel: {
+		type: String,
+		default: 'Cancel',
+	},
 	blurFacesLabel: {
 		type: String,
 		default: 'Blur faces',
@@ -570,6 +635,8 @@ const isCanceling = ref(false);
 const isResetting = ref(false);
 const isUiVisible = ref(props.uiInitiallyVisible);
 const lastOperation = ref('enhance');
+const isCustomEditMode = ref(false);
+const customPrompt = ref('');
 const comparisonPosition = ref(50);
 const pollTimer = ref(null);
 const pollStartedAt = ref(0);
@@ -670,6 +737,8 @@ watch(
 		isImageLoaded.value = false;
 		isCompareOriginalLoaded.value = false;
 		isCompareEnhancedLoaded.value = false;
+		isCustomEditMode.value = false;
+		customPrompt.value = '';
 		isManualBlurMode.value = false;
 		resetManualBlurDrawing();
 		imageKey.value += 1;
@@ -715,6 +784,7 @@ async function enhanceImage(statusText = props.queuedLabel) {
 	}
 
 	log('function/enhanceImage/start');
+	cancelCustomEditMode();
 	lastOperation.value = 'enhance';
 	errorMessage.value = '';
 	activeJob.value = null;
@@ -758,12 +828,107 @@ async function enhanceImage(statusText = props.queuedLabel) {
 	}
 }
 
+function startCustomEditMode(preservePrompt = false) {
+	if (isBusy.value || hasPendingPreview.value) {
+		return;
+	}
+
+	log('function/startCustomEditMode/start');
+	cancelManualBlurMode();
+	errorMessage.value = '';
+	if (!preservePrompt) {
+		customPrompt.value = '';
+	}
+	isCustomEditMode.value = true;
+}
+
+function cancelCustomEditMode(clearPrompt = true) {
+	if (!isCustomEditMode.value && (!clearPrompt || customPrompt.value === '')) {
+		return;
+	}
+
+	log('function/cancelCustomEditMode/start');
+	isCustomEditMode.value = false;
+	if (clearPrompt) {
+		customPrompt.value = '';
+	}
+}
+
+function handleCustomPromptKeydown(event) {
+	if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+		event.preventDefault();
+		applyCustomEnhancement();
+	}
+}
+
+async function applyCustomEnhancement(statusText = props.queuedLabel) {
+	if (typeof statusText !== 'string') {
+		statusText = props.queuedLabel;
+	}
+
+	const prompt = customPrompt.value.trim();
+	if (!prompt) {
+		handleError(new Error('Enter instructions for the custom edit.'));
+		return;
+	}
+
+	log('function/applyCustomEnhancement/start');
+	lastOperation.value = 'customEnhance';
+	errorMessage.value = '';
+	activeJob.value = null;
+	preview.value = null;
+	clearPersistedEnhancementStatus();
+	isCustomEditMode.value = false;
+	isEnhancing.value = true;
+	isBlurringFaces.value = false;
+	remoteStatusLabel.value = statusText;
+	setEnhancementStatus('queued');
+
+	try {
+		persistProviderPreference();
+		const response = await requestApi('enhance', {
+			assetId: props.assetId,
+			customPrompt: prompt,
+			...getProviderRequestPayload(),
+		});
+
+		if (response.queued || response.token || response.jobId) {
+			startPolling({
+				...response,
+				operation: 'customEnhance',
+			});
+			log('function/applyCustomEnhancement/queued');
+			return;
+		}
+
+		applyEnhancedPreview({
+			...response,
+			operation: 'customEnhance',
+		});
+		clearStatusTimer();
+		clearOperationState();
+		remoteStatusLabel.value = '';
+		log('function/applyCustomEnhancement/direct-complete');
+	} catch (error) {
+		handleError(error);
+		isCustomEditMode.value = true;
+		clearStatusTimer();
+		clearOperationState();
+		remoteStatusLabel.value = '';
+	} finally {
+		if (!activeJob.value) {
+			clearOperationState();
+		}
+	}
+}
+
 async function blurFaces(statusText = props.queuedLabel) {
 	if (typeof statusText !== 'string') {
 		statusText = props.queuedLabel;
 	}
 
 	log('function/blurFaces/start');
+	cancelCustomEditMode();
 	cancelManualBlurMode();
 	lastOperation.value = 'blurFaces';
 	errorMessage.value = '';
@@ -815,6 +980,7 @@ function startManualBlurMode() {
 	}
 
 	log('function/startManualBlurMode/start');
+	cancelCustomEditMode();
 	errorMessage.value = '';
 	isManualBlurMode.value = true;
 	updateManualBlurLayout();
@@ -916,6 +1082,15 @@ async function retryEnhancement() {
 		return;
 	}
 
+	if (lastOperation.value === 'customEnhance') {
+		if (customPrompt.value.trim()) {
+			await applyCustomEnhancement(props.retryingLabel);
+		} else {
+			startCustomEditMode(true);
+		}
+		return;
+	}
+
 	await enhanceImage(props.retryingLabel);
 }
 
@@ -935,7 +1110,11 @@ function clearOperationState() {
 }
 
 function getOperationProgressLabel(operation) {
-	return isBlurOperation(operation) ? props.blurringFacesLabel : props.enhancingLabel;
+	if (isBlurOperation(operation)) {
+		return props.blurringFacesLabel;
+	}
+
+	return operation === 'customEnhance' ? props.customEditingLabel : props.enhancingLabel;
 }
 
 function isBlurOperation(operation) {
@@ -992,6 +1171,8 @@ async function keepEnhancedImage() {
 		isCompareOriginalLoaded.value = false;
 		isCompareEnhancedLoaded.value = false;
 		comparisonPosition.value = 50;
+		isCustomEditMode.value = false;
+		customPrompt.value = '';
 		imageKey.value += 1;
 		emit('kept', response);
 		log('function/keepEnhancedImage/complete');
@@ -1007,6 +1188,7 @@ async function cancelEnhancement() {
 	if (!activeJob.value) {
 		return;
 	}
+	const shouldResumeCustomEdit = activeJob.value.operation === 'customEnhance';
 
 	if (props.cancelConfirmMessage && !window.confirm(props.cancelConfirmMessage)) {
 		log('function/cancelEnhancement/declined');
@@ -1025,7 +1207,11 @@ async function cancelEnhancement() {
 			jobId: activeJob.value.jobId,
 		});
 
-		resetToOriginalImage();
+		resetToOriginalImage({ preserveCustomPrompt: shouldResumeCustomEdit });
+		if (shouldResumeCustomEdit) {
+			isCanceling.value = false;
+			startCustomEditMode(true);
+		}
 		clearStatusTimer();
 		emit('canceled', response);
 		log('function/cancelEnhancement/complete');
@@ -1061,6 +1247,8 @@ async function discardEnhancedImage() {
 		isCompareOriginalLoaded.value = false;
 		isCompareEnhancedLoaded.value = false;
 		comparisonPosition.value = 50;
+		isCustomEditMode.value = false;
+		customPrompt.value = '';
 		imageKey.value += 1;
 		emit('discarded', response);
 		log('function/discardEnhancedImage/complete');
@@ -1235,7 +1423,11 @@ async function pollEnhancementStatus() {
 		}
 
 		if (response.status === 'canceled') {
-			resetToOriginalImage();
+			const shouldResumeCustomEdit = activeJob.value.operation === 'customEnhance';
+			resetToOriginalImage({ preserveCustomPrompt: shouldResumeCustomEdit });
+			if (shouldResumeCustomEdit) {
+				startCustomEditMode(true);
+			}
 			clearOperationState();
 			remoteStatusLabel.value = '';
 			emit('canceled', response);
@@ -1260,6 +1452,9 @@ async function pollEnhancementStatus() {
 		clearStatusTimer();
 		clearOperationState();
 		remoteStatusLabel.value = '';
+		if (lastOperation.value === 'customEnhance') {
+			startCustomEditMode(true);
+		}
 		handleError(error);
 	}
 }
@@ -1363,6 +1558,7 @@ function applyEnhancedPreview(response) {
 		url: enhancedUrl,
 		response,
 	};
+	isCustomEditMode.value = false;
 	if (response.operation === 'manualBlurFaces' || response.blurMode === 'manual') {
 		isManualBlurMode.value = false;
 		resetManualBlurDrawing();
@@ -1411,7 +1607,7 @@ function clearStatusTimer() {
 	statusTick.value = Date.now();
 }
 
-function resetToOriginalImage() {
+function resetToOriginalImage({ preserveCustomPrompt = false } = {}) {
 	clearPolling();
 	clearStatusTimer();
 	clearOperationState();
@@ -1424,6 +1620,10 @@ function resetToOriginalImage() {
 	isCompareOriginalLoaded.value = false;
 	isCompareEnhancedLoaded.value = false;
 	comparisonPosition.value = 50;
+	isCustomEditMode.value = false;
+	if (!preserveCustomPrompt) {
+		customPrompt.value = '';
+	}
 	isManualBlurMode.value = false;
 	resetManualBlurDrawing();
 	imageKey.value += 1;
@@ -2076,6 +2276,12 @@ function log(message) {
 	width: min(316px, calc(100% - 24px));
 }
 
+.article-image-action-bar.is-custom-edit {
+	flex-direction: column;
+	align-items: stretch;
+	width: min(420px, calc(100% - 24px));
+}
+
 .article-image-provider-controls {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -2112,6 +2318,40 @@ function log(message) {
 	grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
 	gap: 6px;
 	width: 100%;
+}
+
+.article-image-custom-edit,
+.article-image-custom-edit-field {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	width: 100%;
+	min-width: 0;
+}
+
+.article-image-custom-edit-field {
+	margin: 0;
+	color: #fff;
+	font-size: 11px;
+	font-weight: 700;
+	line-height: 1.2;
+	text-shadow: none;
+}
+
+.article-image-custom-edit-input {
+	box-sizing: border-box;
+	display: block;
+	width: 100%;
+	min-height: 76px;
+	padding: 7px 8px;
+	border: 1px solid rgba(255, 255, 255, 0.7);
+	border-radius: 4px;
+	background: rgba(255, 255, 255, 0.96);
+	color: #222;
+	font: inherit;
+	font-weight: 400;
+	line-height: 1.35;
+	resize: vertical;
 }
 
 .article-image-button {
@@ -2272,6 +2512,7 @@ function log(message) {
 	}
 
 	.article-image-action-bar.has-provider-controls,
+	.article-image-action-bar.is-custom-edit,
 	.article-image-provider-controls {
 		width: 100%;
 	}

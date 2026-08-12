@@ -453,6 +453,7 @@
 			this.previewId = '';
 			this.enhancedUrl = '';
 			this.operation = 'enhance';
+			this.isCustomEditMode = false;
 			this.isManualBlurMode = false;
 			this.manualBlurRegions = [];
 			this.currentManualBlurRegion = null;
@@ -509,7 +510,7 @@
 			const title = this.uploadRepair ? 'Image does not meet field requirements' : 'Enhance image';
 			const description = this.uploadRepair
 				? 'Review the uploaded image and choose how to make it selectable for this field.'
-				: 'Enhance the image or blur its faces, compare the result, then save it over the current asset.';
+				: 'Enhance, custom edit, or blur the image, compare the result, then save it over the current asset.';
 			const root = document.createElement('div');
 			root.className = 'modal image-enhancer-cp-modal';
 			root.innerHTML = [
@@ -532,6 +533,11 @@
 				'  <div class="image-enhancer-cp-provider" data-provider-controls hidden>',
 				'    <label><span>Provider</span><select data-provider></select></label>',
 				'    <label><span>Model</span><select data-model></select></label>',
+				'  </div>',
+				'  <div class="image-enhancer-cp-custom-edit" data-custom-edit-panel hidden>',
+				'    <label for="image-enhancer-custom-prompt">Custom edit instructions</label>',
+				'    <textarea id="image-enhancer-custom-prompt" class="text fullwidth" rows="3" maxlength="4000" placeholder="For example: Flip the image horizontally, or remove all persons." data-custom-prompt></textarea>',
+				'    <p>Only the requested edit is applied. The original dimensions and unrelated content are preserved where possible.</p>',
 				'  </div>',
 				'  <div class="image-enhancer-cp-stage">',
 				'    <div class="image-enhancer-cp-single" data-single>',
@@ -559,8 +565,11 @@
 				'    <div class="image-enhancer-cp-actions">',
 				'      <button type="button" class="btn submit image-enhancer-cp-is-hidden" data-local-repair>Resize locally</button>',
 				'      <button type="button" class="btn submit" data-enhance>Enhance</button>',
+				'      <button type="button" class="btn" data-open-custom-edit>Custom edit</button>',
 				'      <button type="button" class="btn" data-blur-faces>Blur faces</button>',
 				'      <button type="button" class="btn" data-custom-blur>Custom blur</button>',
+				'      <button type="button" class="btn submit image-enhancer-cp-is-hidden" data-apply-custom-edit>Apply edit</button>',
+				'      <button type="button" class="btn image-enhancer-cp-is-hidden" data-cancel-custom-edit>Cancel</button>',
 				'      <button type="button" class="btn submit image-enhancer-cp-is-hidden" data-apply-custom-blur>Apply blur</button>',
 				'      <button type="button" class="btn image-enhancer-cp-is-hidden" data-undo-custom-blur>Undo</button>',
 				'      <button type="button" class="btn image-enhancer-cp-is-hidden" data-cancel-custom-blur>Cancel</button>',
@@ -587,6 +596,11 @@
 			this.statusText = root.querySelector('[data-status-text]');
 			this.error = root.querySelector('[data-error]');
 			this.enhanceButton = root.querySelector('[data-enhance]');
+			this.customEditButton = root.querySelector('[data-open-custom-edit]');
+			this.applyCustomEditButton = root.querySelector('[data-apply-custom-edit]');
+			this.cancelCustomEditButton = root.querySelector('[data-cancel-custom-edit]');
+			this.customEditPanel = root.querySelector('[data-custom-edit-panel]');
+			this.customPromptInput = root.querySelector('[data-custom-prompt]');
 			this.blurFacesButton = root.querySelector('[data-blur-faces]');
 			this.customBlurButton = root.querySelector('[data-custom-blur]');
 			this.applyCustomBlurButton = root.querySelector('[data-apply-custom-blur]');
@@ -608,6 +622,9 @@
 			this.range.addEventListener('input', () => this.updateComparison());
 			root.querySelector('[data-local-repair]').addEventListener('click', () => this.repairLocally());
 			root.querySelector('[data-enhance]').addEventListener('click', () => this.enhance());
+			root.querySelector('[data-open-custom-edit]').addEventListener('click', () => this.startCustomEditMode());
+			root.querySelector('[data-apply-custom-edit]').addEventListener('click', () => this.applyCustomEdit());
+			root.querySelector('[data-cancel-custom-edit]').addEventListener('click', () => this.cancelCustomEditMode());
 			root.querySelector('[data-blur-faces]').addEventListener('click', () => this.blurFaces());
 			root.querySelector('[data-custom-blur]').addEventListener('click', () => this.startManualBlurMode());
 			root.querySelector('[data-apply-custom-blur]').addEventListener('click', () => this.applyManualBlur());
@@ -624,6 +641,12 @@
 			this.manualBlurLayer.addEventListener('pointerup', (event) => this.finishManualBlurDraw(event));
 			this.manualBlurLayer.addEventListener('pointercancel', (event) => this.cancelManualBlurDraw(event));
 			this.manualBlurLayer.addEventListener('pointerleave', (event) => this.handleManualBlurPointerLeave(event));
+			this.customPromptInput.addEventListener('keydown', (event) => {
+				if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+					event.preventDefault();
+					this.applyCustomEdit();
+				}
+			});
 			window.addEventListener('resize', this.manualBlurResizeHandler);
 			this.originalImage.src = this.originalUrl;
 			this.compareOriginalImage.src = this.originalUrl;
@@ -869,6 +892,7 @@
 
 		async enhance() {
 			this.clearError();
+			this.hideCustomEditMode(false);
 			this.operation = 'enhance';
 			this.token = '';
 			this.jobId = '';
@@ -906,12 +930,101 @@
 			}
 		}
 
+		startCustomEditMode(preservePrompt = false) {
+			if (this.uploadRepair) {
+				return;
+			}
+
+			this.clearError();
+			this.hideManualBlurMode(true, false);
+			if (!preservePrompt) {
+				this.customPromptInput.value = '';
+			}
+			this.isCustomEditMode = true;
+			this.customEditPanel.hidden = false;
+			this.providerControls.hidden = !config.providerChoiceEnabled;
+			this.setActionState('customEdit');
+			this.setStatus('', false);
+			this.customPromptInput.focus();
+		}
+
+		cancelCustomEditMode() {
+			if (!this.isCustomEditMode) {
+				return;
+			}
+
+			this.clearError();
+			this.hideCustomEditMode(true);
+			this.setActionState('idle');
+			this.setStatus('', false);
+		}
+
+		hideCustomEditMode(clearPrompt = false) {
+			this.isCustomEditMode = false;
+			this.customEditPanel.hidden = true;
+			if (clearPrompt) {
+				this.customPromptInput.value = '';
+			}
+			this.providerControls.hidden = !config.providerChoiceEnabled;
+		}
+
+		async applyCustomEdit() {
+			if (this.uploadRepair) {
+				return;
+			}
+
+			const customPrompt = this.customPromptInput.value.trim();
+			if (!customPrompt) {
+				this.showError(new Error('Enter instructions for the custom edit.'));
+				this.customPromptInput.focus();
+				return;
+			}
+
+			this.clearError();
+			this.operation = 'customEnhance';
+			this.token = '';
+			this.jobId = '';
+			this.previewId = '';
+			this.enhancedUrl = '';
+			this.hideCustomEditMode(false);
+			this.setPreviewMode(false);
+			this.setBusy(true, 'Queued...');
+
+			try {
+				const payload = {
+					assetId: this.assetId,
+					customPrompt,
+				};
+				if (config.providerChoiceEnabled) {
+					payload.imageEnhancementProvider = this.selectedProvider;
+					payload.imageEnhancementModel = this.selectedModel;
+					this.persistProviderPreference();
+				}
+
+				const response = await this.request('enhance', payload);
+				this.token = response.token || '';
+				this.jobId = response.jobId || '';
+
+				if (response.queued || this.token) {
+					this.poll();
+					return;
+				}
+
+				this.applyPreview({ ...response, operation: 'customEnhance' });
+			} catch (error) {
+				this.setBusy(false);
+				this.startCustomEditMode(true);
+				this.showError(error);
+			}
+		}
+
 		async blurFaces() {
 			if (this.uploadRepair) {
 				return;
 			}
 
 			this.clearError();
+			this.hideCustomEditMode(false);
 			this.operation = 'blurFaces';
 			this.token = '';
 			this.jobId = '';
@@ -945,6 +1058,7 @@
 			}
 
 			this.clearError();
+			this.hideCustomEditMode(false);
 			if (!preserveRegions) {
 				this.resetManualBlurDrawing();
 			}
@@ -1048,6 +1162,7 @@
 		async poll() {
 			window.clearTimeout(this.pollTimer);
 			let shouldResumeManualBlur = false;
+			let shouldResumeCustomEdit = false;
 
 			try {
 				const response = await this.request('status', {
@@ -1065,13 +1180,18 @@
 
 				if (response.status === 'failed') {
 					shouldResumeManualBlur = this.operation === 'manualBlurFaces';
-					const fallback = this.isBlurOperation() ? 'Face blur failed.' : 'Enhancement failed.';
+					shouldResumeCustomEdit = this.operation === 'customEnhance';
+					const fallback = this.isBlurOperation()
+						? 'Face blur failed.'
+						: (this.isCustomEnhancement() ? 'Custom edit failed.' : 'Enhancement failed.');
 					throw new Error(response.message || response.previousError || fallback);
 				}
 
 				if (response.status === 'canceled') {
 					this.setBusy(false);
-					if (!this.resumeManualBlurMode()) {
+					if (this.operation === 'customEnhance') {
+						this.startCustomEditMode(true);
+					} else if (!this.resumeManualBlurMode()) {
 						this.setStatus('Canceled', false);
 					}
 					return;
@@ -1086,6 +1206,8 @@
 				this.setBusy(false);
 				if (shouldResumeManualBlur) {
 					this.resumeManualBlurMode();
+				} else if (shouldResumeCustomEdit) {
+					this.startCustomEditMode(true);
 				}
 				this.showError(error);
 			}
@@ -1099,6 +1221,7 @@
 			}
 
 			const shouldResumeManualBlur = this.operation === 'manualBlurFaces';
+			const shouldResumeCustomEdit = this.operation === 'customEnhance';
 			this.clearError();
 			this.setBusy(true, 'Canceling...');
 
@@ -1111,7 +1234,9 @@
 				});
 				window.clearTimeout(this.pollTimer);
 				this.setBusy(false);
-				if (!shouldResumeManualBlur || !this.resumeManualBlurMode()) {
+				if (shouldResumeCustomEdit) {
+					this.startCustomEditMode(true);
+				} else if (!shouldResumeManualBlur || !this.resumeManualBlurMode()) {
 					this.setStatus('Canceled', false);
 				}
 			} catch (error) {
@@ -1156,7 +1281,10 @@
 				const imageUrl = response.imageUrl || this.enhancedUrl;
 				refreshAssetFieldImage(this.assetId, withCacheBuster(imageUrl), this.card);
 				if (window.Craft?.cp) {
-					Craft.cp.displayNotice(this.isBlurOperation() ? 'Blurred image saved.' : 'Enhanced image saved.');
+					const notice = this.isBlurOperation()
+						? 'Blurred image saved.'
+						: (this.isCustomEnhancement() ? 'Custom edit saved.' : 'Enhanced image saved.');
+					Craft.cp.displayNotice(notice);
 				}
 				this.close();
 			} catch (error) {
@@ -1211,6 +1339,7 @@
 			this.enhancedUrl = enhancedUrl;
 			this.enhancedImage.src = enhancedUrl;
 			this.hideManualBlurMode(true);
+			this.hideCustomEditMode(false);
 			this.setBusy(false);
 			this.setPreviewMode(true);
 			this.updateComparison();
@@ -1224,6 +1353,9 @@
 
 		setBusy(isBusy, label = '', includeCounter = false) {
 			this.enhanceButton.disabled = isBusy;
+			this.customEditButton.disabled = isBusy;
+			this.applyCustomEditButton.disabled = isBusy;
+			this.cancelCustomEditButton.disabled = isBusy;
 			this.blurFacesButton.disabled = isBusy;
 			this.customBlurButton.disabled = isBusy;
 			this.applyCustomBlurButton.disabled = isBusy || this.manualBlurRegions.length === 0;
@@ -1241,6 +1373,9 @@
 			this.closeButton.disabled = isProcessing;
 			this.localRepairButton.disabled = isProcessing || !this.uploadRepair?.repairable;
 			this.enhanceButton.disabled = isProcessing;
+			this.customEditButton.disabled = true;
+			this.applyCustomEditButton.disabled = true;
+			this.cancelCustomEditButton.disabled = true;
 			this.blurFacesButton.disabled = true;
 			this.customBlurButton.disabled = true;
 			this.applyCustomBlurButton.disabled = true;
@@ -1257,6 +1392,9 @@
 		setPreviewProcessing(isProcessing, label = '') {
 			this.closeButton.disabled = isProcessing;
 			this.enhanceButton.disabled = true;
+			this.customEditButton.disabled = true;
+			this.applyCustomEditButton.disabled = true;
+			this.cancelCustomEditButton.disabled = true;
 			this.blurFacesButton.disabled = true;
 			this.customBlurButton.disabled = true;
 			this.applyCustomBlurButton.disabled = true;
@@ -1273,6 +1411,9 @@
 			if (this.uploadRepair) {
 				this.toggleButton(this.localRepairButton, state !== 'idle');
 				this.toggleButton(this.enhanceButton, state !== 'idle');
+				this.toggleButton(this.customEditButton, true);
+				this.toggleButton(this.applyCustomEditButton, true);
+				this.toggleButton(this.cancelCustomEditButton, true);
 				this.toggleButton(this.blurFacesButton, true);
 				this.toggleButton(this.customBlurButton, true);
 				this.toggleButton(this.applyCustomBlurButton, true);
@@ -1286,6 +1427,9 @@
 			}
 
 			this.toggleButton(this.enhanceButton, state !== 'idle');
+			this.toggleButton(this.customEditButton, state !== 'idle');
+			this.toggleButton(this.applyCustomEditButton, state !== 'customEdit');
+			this.toggleButton(this.cancelCustomEditButton, state !== 'customEdit');
 			this.toggleButton(this.blurFacesButton, state !== 'idle');
 			this.toggleButton(this.customBlurButton, state !== 'idle');
 			this.toggleButton(this.applyCustomBlurButton, state !== 'manual');
@@ -1309,6 +1453,10 @@
 
 		isBlurOperation() {
 			return ['blurFaces', 'manualBlurFaces'].includes(this.operation);
+		}
+
+		isCustomEnhancement() {
+			return this.operation === 'customEnhance';
 		}
 
 		toggleButton(button, isHidden) {

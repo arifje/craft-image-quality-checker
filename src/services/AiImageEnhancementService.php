@@ -37,7 +37,14 @@ class AiImageEnhancementService extends Component
 		};
 	}
 
-	public function enhanceToTempFile(ClientInterface $client, Settings $settings, Asset $asset, string $localPath, array $providerOptions = []): string
+	public function enhanceToTempFile(
+		ClientInterface $client,
+		Settings $settings,
+		Asset $asset,
+		string $localPath,
+		array $providerOptions = [],
+		?string $customPrompt = null,
+	): string
 	{
 		$provider = $this->resolveProvider($settings, $providerOptions);
 		$model = $this->getProviderModel($settings, $providerOptions);
@@ -46,13 +53,22 @@ class AiImageEnhancementService extends Component
 			throw new \RuntimeException($this->getProviderLabel($settings, $providerOptions) . ' API key is missing.');
 		}
 
-		$prompt = ImageEnhancer::getInstance()->runtimeSettings->getCreativeEnhancementPromptForRequest($settings);
+		$customPrompt = trim((string) $customPrompt);
+		$prompt = $customPrompt !== ''
+			? $this->getCustomEditPrompt($customPrompt)
+			: ImageEnhancer::getInstance()->runtimeSettings->getCreativeEnhancementPromptForRequest($settings);
 
 		return match ($provider) {
 			Settings::IMAGE_PROVIDER_XAI => $this->enhanceWithXai($client, $asset, $localPath, $apiKey, $model, $prompt),
 			Settings::IMAGE_PROVIDER_GOOGLE => $this->enhanceWithGoogle($client, $asset, $localPath, $apiKey, $model, $prompt),
 			default => $this->enhanceWithOpenAi($client, $asset, $localPath, $apiKey, $model, $prompt),
 		};
+	}
+
+	private function getCustomEditPrompt(string $customPrompt): string
+	{
+		return "Custom image editing request:\n" . trim($customPrompt) . "\n\n" .
+			'Apply only the requested edit. Unless the request explicitly says otherwise, preserve the original dimensions, crop, aspect ratio, and all unrelated image content. Do not make unrelated creative changes.';
 	}
 
 	private function resolveProvider(Settings $settings, array $providerOptions): string

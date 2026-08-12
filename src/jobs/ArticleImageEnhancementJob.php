@@ -22,6 +22,7 @@ class ArticleImageEnhancementJob extends BaseJob
 	public int $retryAttempt = 0;
 	public ?string $imageEnhancementProvider = null;
 	public ?string $imageEnhancementModel = null;
+	public ?string $customPrompt = null;
 	public ?int $targetWidth = null;
 	public ?int $targetHeight = null;
 
@@ -49,8 +50,9 @@ class ArticleImageEnhancementJob extends BaseJob
 
 			$providerOptions = $this->getProviderOptions();
 			$providerLabel = ImageEnhancer::getInstance()->aiImageEnhancement->getProviderLabel($settings, $providerOptions);
-			$this->updateStatus('running', 0.2, 'Sending image to ' . $providerLabel);
-			$this->setProgress($queue, 0.2, 'Sending image to ' . $providerLabel);
+			$progressLabel = $this->isCustomEnhancement() ? 'Applying custom edit with ' . $providerLabel : 'Sending image to ' . $providerLabel;
+			$this->updateStatus('running', 0.2, $progressLabel);
+			$this->setProgress($queue, 0.2, $progressLabel);
 			$tempPath = $this->enhanceToTempFile(Craft::createGuzzleClient(), $settings, $asset, $localPath, $providerOptions);
 
 			if ($this->isCanceled()) {
@@ -59,8 +61,9 @@ class ArticleImageEnhancementJob extends BaseJob
 				return;
 			}
 
-			$this->updateStatus('running', 0.85, 'Saving enhanced preview');
-			$this->setProgress($queue, 0.85, 'Saving enhanced preview');
+			$previewProgressLabel = $this->isCustomEnhancement() ? 'Saving custom edit preview' : 'Saving enhanced preview';
+			$this->updateStatus('running', 0.85, $previewProgressLabel);
+			$this->setProgress($queue, 0.85, $previewProgressLabel);
 			$previewAsset = $this->createPreviewAsset($asset, $tempPath);
 
 			if (!$previewAsset instanceof Asset) {
@@ -74,10 +77,11 @@ class ArticleImageEnhancementJob extends BaseJob
 				return;
 			}
 
-			$this->updateStatus('complete', 1, 'Enhanced preview ready', [
+			$completeLabel = $this->isCustomEnhancement() ? 'Custom edit preview ready' : 'Enhanced preview ready';
+			$this->updateStatus('complete', 1, $completeLabel, [
 				'previewId' => $previewAsset->id,
 			]);
-			$this->setProgress($queue, 1, 'Enhanced preview ready');
+			$this->setProgress($queue, 1, $completeLabel);
 		} catch (\Throwable $e) {
 			if ($this->isCanceled()) {
 				$this->finishCanceled($queue);
@@ -89,7 +93,8 @@ class ArticleImageEnhancementJob extends BaseJob
 				throw $e;
 			}
 
-			$this->updateStatus('failed', 1, 'Enhancement failed', [
+			$failedLabel = $this->isCustomEnhancement() ? 'Custom edit failed' : 'Enhancement failed';
+			$this->updateStatus('failed', 1, $failedLabel, [
 				'message' => $e->getMessage(),
 			]);
 			$this->sendSlackErrorNotification($settings, $e);
@@ -101,7 +106,14 @@ class ArticleImageEnhancementJob extends BaseJob
 	private function enhanceToTempFile(ClientInterface $client, Settings $settings, Asset $asset, string $localPath, array $providerOptions = []): string
 	{
 		[$originalWidth, $originalHeight] = getimagesize($localPath) ?: [null, null];
-		$tempPath = ImageEnhancer::getInstance()->aiImageEnhancement->enhanceToTempFile($client, $settings, $asset, $localPath, $providerOptions);
+		$tempPath = ImageEnhancer::getInstance()->aiImageEnhancement->enhanceToTempFile(
+			$client,
+			$settings,
+			$asset,
+			$localPath,
+			$providerOptions,
+			$this->customPrompt,
+		);
 
 		$targetWidth = $this->targetWidth ?: $originalWidth;
 		$targetHeight = $this->targetHeight ?: $originalHeight;
@@ -122,6 +134,11 @@ class ArticleImageEnhancementJob extends BaseJob
 			'provider' => $this->imageEnhancementProvider,
 			'model' => $this->imageEnhancementModel,
 		];
+	}
+
+	private function isCustomEnhancement(): bool
+	{
+		return trim((string) $this->customPrompt) !== '';
 	}
 
 	private function createPreviewAsset(Asset $originalAsset, string $tempPath): ?Asset
@@ -248,6 +265,7 @@ class ArticleImageEnhancementJob extends BaseJob
 			'status' => $status,
 			'assetId' => $this->assetId,
 			'token' => $this->token,
+			'operation' => $this->isCustomEnhancement() ? 'customEnhance' : 'enhance',
 			'progress' => $progress,
 			'progressLabel' => $progressLabel,
 		], $extra);
@@ -286,6 +304,7 @@ class ArticleImageEnhancementJob extends BaseJob
 				'retryAttempt' => $nextAttempt,
 				'imageEnhancementProvider' => $this->imageEnhancementProvider,
 				'imageEnhancementModel' => $this->imageEnhancementModel,
+				'customPrompt' => $this->customPrompt,
 				'targetWidth' => $this->targetWidth,
 				'targetHeight' => $this->targetHeight,
 			]), null, $delay);
@@ -501,6 +520,8 @@ class ArticleImageEnhancementJob extends BaseJob
 		$title = $this->getRelatedEntryForAsset($this->assetId)?->title ?? null;
 		$title = $title ? $this->truncateTitle($title) : null;
 
-		return $title ? 'Enhance article image preview: ' . $title : 'Enhance article image preview';
+		$prefix = $this->isCustomEnhancement() ? 'Custom edit article image preview' : 'Enhance article image preview';
+
+		return $title ? $prefix . ': ' . $title : $prefix;
 	}
 }
