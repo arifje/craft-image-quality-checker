@@ -3,23 +3,11 @@
 	line-height: 1;
 }
 
-.image-enhancer-cp-field-button {
-	appearance: none;
-	padding: 0;
-	border: 0;
-	background: transparent;
-	color: #d94d19;
-	cursor: pointer;
+.image-enhancer-cp-field-button.btn {
+	min-height: 24px;
+	padding: 3px 9px;
 	font-size: 12px;
-	font-weight: 700;
-	line-height: 1.2;
-	text-decoration: underline;
-	text-underline-offset: 2px;
-}
-
-.image-enhancer-cp-field-button:hover,
-.image-enhancer-cp-field-button:focus {
-	color: #b83d0f;
+	line-height: 16px;
 }
 
 .modal.image-enhancer-cp-modal,
@@ -106,6 +94,7 @@
 .image-enhancer-upload-summary[hidden],
 .image-enhancer-cp-provider[hidden],
 .image-enhancer-cp-custom-edit[hidden],
+.image-enhancer-cp-video[hidden],
 .image-enhancer-cp-manual-blur-layer[hidden],
 .image-enhancer-cp-status[hidden],
 .image-enhancer-cp-error[hidden] {
@@ -181,7 +170,8 @@
 	width: 100%;
 }
 
-.image-enhancer-cp-custom-edit {
+.image-enhancer-cp-custom-edit,
+.image-enhancer-cp-video {
 	margin-bottom: 12px;
 	padding: 12px;
 	border: 1px solid #d8dee6;
@@ -189,14 +179,21 @@
 	background: #f7f8fa;
 }
 
-.image-enhancer-cp-custom-edit label {
+.image-enhancer-cp-custom-edit label,
+.image-enhancer-cp-video label {
 	display: block;
 	margin-bottom: 6px;
 	font-size: 13px;
 	font-weight: 700;
 }
 
-.image-enhancer-cp-custom-edit textarea {
+.image-enhancer-cp-video label span {
+	color: #66727f;
+	font-weight: 400;
+}
+
+.image-enhancer-cp-custom-edit textarea,
+.image-enhancer-cp-video textarea {
 	box-sizing: border-box;
 	display: block;
 	width: 100%;
@@ -204,7 +201,8 @@
 	resize: vertical;
 }
 
-.image-enhancer-cp-custom-edit p {
+.image-enhancer-cp-custom-edit p,
+.image-enhancer-cp-video p {
 	margin: 6px 0 0;
 	color: #66727f;
 	font-size: 12px;

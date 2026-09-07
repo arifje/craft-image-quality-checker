@@ -6,6 +6,7 @@ use Craft;
 
 use arjanbrinkman\craftimageenhancer\models\Settings;
 use arjanbrinkman\craftimageenhancer\services\AiImageEnhancementService;
+use arjanbrinkman\craftimageenhancer\services\AiVideoGenerationService;
 use arjanbrinkman\craftimageenhancer\services\AssetRequirementService;
 use arjanbrinkman\craftimageenhancer\services\ImageQualityService;
 use arjanbrinkman\craftimageenhancer\services\RuntimeSettingsService;
@@ -36,6 +37,7 @@ use craft\events\TemplateEvent;
  * @method static ImageEnhancer getInstance()
  * @method Settings getSettings()
  * @property AiImageEnhancementService $aiImageEnhancement
+ * @property AiVideoGenerationService $aiVideoGeneration
  * @property AssetRequirementService $assetRequirements
  * @property RuntimeSettingsService $runtimeSettings
  */
@@ -51,6 +53,7 @@ class ImageEnhancer extends Plugin
 			'components' => [
 				'imageQualityService' => ImageQualityService::class,
 				'aiImageEnhancement' => AiImageEnhancementService::class,
+				'aiVideoGeneration' => AiVideoGenerationService::class,
 				'assetRequirements' => AssetRequirementService::class,
 				'runtimeSettings' => RuntimeSettingsService::class,
 			],
@@ -211,9 +214,11 @@ class ImageEnhancer extends Plugin
 				'uploadDiscard' => 'craft-image-enhancer/upload-assistant/discard',
 				'assetInfo' => 'craft-image-enhancer/article-image/asset-info',
 				'enhance' => 'craft-image-enhancer/article-image/enhance',
+				'createVideo' => 'craft-image-enhancer/article-image/create-video',
 				'blurFaces' => 'craft-image-enhancer/article-image/blur-faces',
 				'status' => 'craft-image-enhancer/article-image/status',
 				'cancel' => 'craft-image-enhancer/article-image/cancel',
+				'reset' => 'craft-image-enhancer/article-image/reset',
 				'keep' => 'craft-image-enhancer/article-image/keep',
 				'discard' => 'craft-image-enhancer/article-image/discard',
 			],

@@ -229,7 +229,7 @@
 	<div class="image-enhancer-provider-settings">
 		<div class="image-enhancer-provider-settings__intro">
 			<h2>Provider credentials and models</h2>
-			<p>Only the selected provider is shown here. When editors can choose in the frontend, all configured providers are shown in this compact overview.</p>
+			<p>Only the selected image provider is shown here. When editors can choose in the frontend, all image providers are shown in this compact overview.</p>
 		</div>
 
 		<div class="image-enhancer-provider-grid">
@@ -278,18 +278,8 @@
 			<div class="image-enhancer-provider-card" data-image-enhancement-provider-fields="google">
 				<div class="image-enhancer-provider-card__header">
 					<h3>Google Nano Banana</h3>
-					<p>Requires a Google AI API key.</p>
+					<p>Uses the Google AI API key configured for video generation below.</p>
 				</div>
-
-				{{ forms.autosuggestField({
-					label: 'API key',
-					name: 'googleAiApiKey',
-					id: 'googleAiApiKey',
-					instructions: 'Stored in project config and used for Google image requests. Environment variables are supported.',
-					value: settings.googleAiApiKey,
-					placeholder: 'AIza...',
-					suggestEnvVars: true,
-				}) }}
 
 				{{ forms.selectField({
 					label: 'Image model',
@@ -301,6 +291,23 @@
 				}) }}
 			</div>
 		</div>
+	</div>
+
+	<div class="image-enhancer-video-settings">
+		<div class="image-enhancer-provider-card__header">
+			<h2>Video generation</h2>
+			<p>The control-panel Create Video action uses Gemini Omni Flash to create a downloadable 720p MP4. It never replaces or creates a Craft asset.</p>
+		</div>
+
+		{{ forms.autosuggestField({
+			label: 'Google AI API key',
+			name: 'googleAiApiKey',
+			id: 'googleAiApiKey',
+			instructions: 'Used for Gemini Omni Flash video generation and Google Nano Banana image enhancement. Environment variables are supported.',
+			value: settings.googleAiApiKey,
+			placeholder: 'AIza...',
+			suggestEnvVars: true,
+		}) }}
 	</div>
 
 	{% js %}
@@ -333,6 +340,20 @@
 		.image-enhancer-provider-settings {
 			margin: 24px 0 32px;
 			max-width: 1180px;
+		}
+
+		.image-enhancer-video-settings {
+			box-sizing: border-box;
+			max-width: 520px;
+			margin: -16px 0 32px;
+			padding: 16px;
+			border: 1px solid #dce3ea;
+			border-radius: 8px;
+			background: #f7f9fb;
+		}
+
+		.image-enhancer-video-settings h2 {
+			margin: 0 0 4px;
 		}
 
 		.image-enhancer-provider-settings__intro {
@@ -387,8 +408,13 @@
 			margin-bottom: 0;
 		}
 
+		.image-enhancer-video-settings .field {
+			margin-bottom: 0;
+		}
+
 		.image-enhancer-provider-card input.text,
-		.image-enhancer-provider-card select {
+		.image-enhancer-provider-card select,
+		.image-enhancer-video-settings input.text {
 			width: 100%;
 			max-width: 100%;
 		}

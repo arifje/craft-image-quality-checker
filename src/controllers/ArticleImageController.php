@@ -5,7 +5,9 @@ namespace arjanbrinkman\craftimageenhancer\controllers;
 use arjanbrinkman\craftimageenhancer\ImageEnhancer;
 use arjanbrinkman\craftimageenhancer\jobs\ArticleImageEnhancementJob;
 use arjanbrinkman\craftimageenhancer\jobs\ArticleImageFaceBlurJob;
+use arjanbrinkman\craftimageenhancer\jobs\ArticleImageVideoJob;
 use arjanbrinkman\craftimageenhancer\models\Settings;
+use arjanbrinkman\craftimageenhancer\services\AiVideoGenerationService;
 use Craft;
 use craft\elements\Asset;
 use craft\helpers\UrlHelper;
@@ -123,6 +125,92 @@ class ArticleImageController extends Controller
 		$length = function_exists('mb_strlen') ? mb_strlen($prompt) : strlen($prompt);
 
 		return $prompt !== '' && $length <= 4000 ? $prompt : false;
+	}
+
+	public function actionCreateVideo(): Response
+	{
+		$this->requireLogin();
+		$this->requirePostRequest();
+		$this->requireAcceptsJson();
+
+		$asset = $this->getPostedAsset();
+		if (!$asset instanceof Asset) {
+			return $this->asJsonFailure('Asset not found or unsupported.');
+		}
+		if (!$this->canSaveAsset($asset)) {
+			return $this->asJsonFailure('You do not have permission to create a video from this asset.');
+		}
+		if ((string) Craft::$app->getRequest()->getBodyParam('uploadRepairToken') !== '') {
+			return $this->asJsonFailure('Create Video is not available while repairing an invalid upload.');
+		}
+
+		$videoPrompt = $this->getVideoPromptForRequest();
+		if ($videoPrompt === false) {
+			return $this->asJsonFailure('Enter video instructions of no more than 4000 characters.');
+		}
+
+		$settings = ImageEnhancer::getInstance()->getSettings();
+		if ($settings->getResolvedGoogleAiApiKey() === '') {
+			return $this->asJsonFailure('Google AI API key is missing. Add it in the Image Enhancer settings first.');
+		}
+
+		$localPath = $this->getFullAssetPath($asset);
+		if (!$localPath || !file_exists($localPath)) {
+			return $this->asJsonFailure('Could not find the source image file.');
+		}
+
+		try {
+			ImageEnhancer::getInstance()->aiVideoGeneration->cleanupExpiredVideos();
+			$token = bin2hex(random_bytes(16));
+			$this->setEnhancementStatus($token, [
+				'status' => 'queued',
+				'assetId' => $asset->id,
+				'operation' => 'createVideo',
+				'progress' => 0,
+				'progressLabel' => 'Queued',
+			]);
+			$jobId = Craft::$app->queue->push(new ArticleImageVideoJob([
+				'assetId' => $asset->id,
+				'userId' => Craft::$app->getUser()->getId(),
+				'token' => $token,
+				'videoPrompt' => $videoPrompt,
+			]));
+			$this->setEnhancementStatus($token, [
+				'status' => 'queued',
+				'assetId' => $asset->id,
+				'operation' => 'createVideo',
+				'jobId' => $jobId,
+				'progress' => 0,
+				'progressLabel' => 'Queued',
+			]);
+
+			return $this->asJson([
+				'success' => true,
+				'queued' => true,
+				'assetId' => $asset->id,
+				'operation' => 'createVideo',
+				'jobId' => $jobId,
+				'token' => $token,
+				'statusUrl' => UrlHelper::actionUrl('craft-image-enhancer/article-image/status'),
+				'videoModel' => AiVideoGenerationService::MODEL,
+			]);
+		} catch (\Throwable $e) {
+			Craft::error('ImageEnhancer: Article image video queueing failed: ' . $e->getMessage(), __METHOD__);
+			return $this->asJsonFailure('Could not queue video generation: ' . $e->getMessage());
+		}
+	}
+
+	private function getVideoPromptForRequest(): string|false
+	{
+		$value = Craft::$app->getRequest()->getBodyParam('videoPrompt', '');
+		if (!is_string($value)) {
+			return false;
+		}
+
+		$prompt = trim($value);
+		$length = function_exists('mb_strlen') ? mb_strlen($prompt) : strlen($prompt);
+
+		return $length <= AiVideoGenerationService::MAX_PROMPT_LENGTH ? $prompt : false;
 	}
 
 	public function actionBlurFaces(): Response
@@ -374,6 +462,22 @@ class ArticleImageController extends Controller
 			}
 		}
 
+		if (($status['operation'] ?? null) === 'createVideo' && ($status['status'] ?? null) === 'complete') {
+			$videoPath = is_string($status['videoPath'] ?? null) ? $status['videoPath'] : null;
+			if (ImageEnhancer::getInstance()->aiVideoGeneration->isManagedVideoPath($videoPath)) {
+				$status['downloadUrl'] = UrlHelper::actionUrl('craft-image-enhancer/article-image/download-video', [
+					'assetId' => $assetId,
+					'token' => (string) ($status['token'] ?? $token),
+				]);
+			} else {
+				$status['status'] = 'failed';
+				$status['progressLabel'] = 'Video download expired';
+				$status['message'] = 'The generated video is no longer available. Create it again.';
+			}
+		}
+
+		unset($status['videoPath']);
+
 		return $this->asJson(array_merge(['success' => true], $status));
 	}
 
@@ -405,6 +509,46 @@ class ArticleImageController extends Controller
 		return $response;
 	}
 
+	public function actionDownloadVideo(): Response
+	{
+		$this->requireLogin();
+
+		$request = Craft::$app->getRequest();
+		$assetId = (int) $request->getQueryParam('assetId');
+		$token = (string) $request->getQueryParam('token');
+		$asset = Craft::$app->assets->getAssetById($assetId);
+		$status = $token !== ''
+			? Craft::$app->getCache()->get($this->getEnhancementStatusCacheKey($token))
+			: null;
+
+		if (
+			!$this->isSupportedImageAsset($asset) ||
+			!$this->canSaveAsset($asset) ||
+			!is_array($status) ||
+			(int) ($status['assetId'] ?? 0) !== $assetId ||
+			($status['operation'] ?? null) !== 'createVideo' ||
+			($status['status'] ?? null) !== 'complete'
+		) {
+			throw new NotFoundHttpException('Generated video not found.');
+		}
+
+		$videoPath = is_string($status['videoPath'] ?? null) ? $status['videoPath'] : null;
+		if (!ImageEnhancer::getInstance()->aiVideoGeneration->isManagedVideoPath($videoPath)) {
+			throw new NotFoundHttpException('Generated video not found.');
+		}
+
+		$filename = is_string($status['videoFilename'] ?? null) && $status['videoFilename'] !== ''
+			? $status['videoFilename']
+			: ImageEnhancer::getInstance()->aiVideoGeneration->getDownloadFilename($asset);
+		$response = Craft::$app->getResponse()->sendFile((string) $videoPath, $filename, [
+			'mimeType' => 'video/mp4',
+			'inline' => false,
+		]);
+		$response->headers->set('Cache-Control', 'private, no-store, max-age=0');
+
+		return $response;
+	}
+
 	public function actionCancel(): Response
 	{
 		$this->requireLogin();
@@ -428,6 +572,12 @@ class ArticleImageController extends Controller
 		}
 
 		$existingStatus = is_array($status) ? $status : [];
+		if (isset($existingStatus['videoPath'])) {
+			ImageEnhancer::getInstance()->aiVideoGeneration->deleteVideo(
+				is_string($existingStatus['videoPath']) ? $existingStatus['videoPath'] : null,
+			);
+			unset($existingStatus['videoPath'], $existingStatus['videoFilename']);
+		}
 		$this->setEnhancementStatus($token, array_merge($existingStatus, [
 			'status' => 'canceled',
 			'assetId' => $asset->id,
@@ -738,6 +888,11 @@ class ArticleImageController extends Controller
 	{
 		if ($token) {
 			$status = Craft::$app->getCache()->get($this->getEnhancementStatusCacheKey($token));
+			if (is_array($status) && isset($status['videoPath'])) {
+				ImageEnhancer::getInstance()->aiVideoGeneration->deleteVideo(
+					is_string($status['videoPath']) ? $status['videoPath'] : null,
+				);
+			}
 			Craft::$app->getCache()->delete($this->getEnhancementStatusCacheKey($token));
 
 			$assetId = $assetId ?: (is_array($status) ? (int) ($status['assetId'] ?? 0) : 0);

@@ -17,9 +17,11 @@
 			uploadDiscard: 'craft-image-enhancer/upload-assistant/discard',
 			assetInfo: 'craft-image-enhancer/article-image/asset-info',
 			enhance: 'craft-image-enhancer/article-image/enhance',
+			createVideo: 'craft-image-enhancer/article-image/create-video',
 			blurFaces: 'craft-image-enhancer/article-image/blur-faces',
 			status: 'craft-image-enhancer/article-image/status',
 			cancel: 'craft-image-enhancer/article-image/cancel',
+			reset: 'craft-image-enhancer/article-image/reset',
 			keep: 'craft-image-enhancer/article-image/keep',
 			discard: 'craft-image-enhancer/article-image/discard',
 		},
@@ -271,7 +273,7 @@
 
 		const action = document.createElement('div');
 		action.className = 'image-enhancer-cp-field-action';
-		action.innerHTML = '<button type="button" class="image-enhancer-cp-field-button">Enhance</button>';
+		action.innerHTML = '<button type="button" class="btn small image-enhancer-cp-field-button">Enhance</button>';
 		const button = action.querySelector('button');
 		button.dataset.imageEnhancerCpAssetId = assetId;
 		button.dataset.imageEnhancerCpOriginalUrl = originalUrl;
@@ -454,6 +456,7 @@
 			this.enhancedUrl = '';
 			this.operation = 'enhance';
 			this.isCustomEditMode = false;
+			this.isVideoMode = false;
 			this.isManualBlurMode = false;
 			this.manualBlurRegions = [];
 			this.currentManualBlurRegion = null;
@@ -462,6 +465,7 @@
 			this.pollTimer = null;
 			this.statusStartedAt = 0;
 			this.statusTickTimer = null;
+			this.videoDownloadUrl = '';
 			this.manualBlurResizeHandler = () => this.renderManualBlurRegions();
 			this.selectedProvider = this.getInitialProvider();
 			this.selectedModel = this.getInitialModel(this.selectedProvider);
@@ -510,7 +514,7 @@
 			const title = this.uploadRepair ? 'Image does not meet field requirements' : 'Enhance image';
 			const description = this.uploadRepair
 				? 'Review the uploaded image and choose how to make it selectable for this field.'
-				: 'Enhance, custom edit, or blur the image, compare the result, then save it over the current asset.';
+				: 'Enhance, edit, blur, or animate the image. Image previews can replace the asset; generated videos are download only.';
 			const root = document.createElement('div');
 			root.className = 'modal image-enhancer-cp-modal';
 			root.innerHTML = [
@@ -538,6 +542,11 @@
 				'    <label for="image-enhancer-custom-prompt">Custom edit instructions</label>',
 				'    <textarea id="image-enhancer-custom-prompt" class="text fullwidth" rows="3" maxlength="4000" placeholder="For example: Flip the image horizontally, or remove all persons." data-custom-prompt></textarea>',
 				'    <p>Only the requested edit is applied. The original dimensions and unrelated content are preserved where possible.</p>',
+				'  </div>',
+				'  <div class="image-enhancer-cp-video" data-video-panel hidden>',
+				'    <label>Video instructions <span>(optional)</span></label>',
+				'    <textarea class="text fullwidth" rows="3" maxlength="4000" placeholder="For example: Slowly push the camera in while the subject looks toward the camera." data-video-prompt></textarea>',
+				'    <p>Creates a 720p MP4 with Gemini Omni Flash using the Google AI API key. The image remains unchanged.</p>',
 				'  </div>',
 				'  <div class="image-enhancer-cp-stage">',
 				'    <div class="image-enhancer-cp-single" data-single>',
@@ -568,8 +577,13 @@
 				'      <button type="button" class="btn" data-open-custom-edit>Custom edit</button>',
 				'      <button type="button" class="btn" data-blur-faces>Blur faces</button>',
 				'      <button type="button" class="btn" data-custom-blur>Custom blur</button>',
+				'      <button type="button" class="btn" data-open-video>Create Video</button>',
 				'      <button type="button" class="btn submit image-enhancer-cp-is-hidden" data-apply-custom-edit>Apply edit</button>',
 				'      <button type="button" class="btn image-enhancer-cp-is-hidden" data-cancel-custom-edit>Cancel</button>',
+				'      <button type="button" class="btn submit image-enhancer-cp-is-hidden" data-create-video>Generate video</button>',
+				'      <button type="button" class="btn image-enhancer-cp-is-hidden" data-cancel-video>Cancel</button>',
+				'      <a class="btn submit image-enhancer-cp-is-hidden" href="#" download data-download-video>Download video</a>',
+				'      <button type="button" class="btn image-enhancer-cp-is-hidden" data-done-video>Done</button>',
 				'      <button type="button" class="btn submit image-enhancer-cp-is-hidden" data-apply-custom-blur>Apply blur</button>',
 				'      <button type="button" class="btn image-enhancer-cp-is-hidden" data-undo-custom-blur>Undo</button>',
 				'      <button type="button" class="btn image-enhancer-cp-is-hidden" data-cancel-custom-blur>Cancel</button>',
@@ -601,6 +615,13 @@
 			this.cancelCustomEditButton = root.querySelector('[data-cancel-custom-edit]');
 			this.customEditPanel = root.querySelector('[data-custom-edit-panel]');
 			this.customPromptInput = root.querySelector('[data-custom-prompt]');
+			this.openVideoButton = root.querySelector('[data-open-video]');
+			this.createVideoButton = root.querySelector('[data-create-video]');
+			this.cancelVideoButton = root.querySelector('[data-cancel-video]');
+			this.downloadVideoButton = root.querySelector('[data-download-video]');
+			this.doneVideoButton = root.querySelector('[data-done-video]');
+			this.videoPanel = root.querySelector('[data-video-panel]');
+			this.videoPromptInput = root.querySelector('[data-video-prompt]');
 			this.blurFacesButton = root.querySelector('[data-blur-faces]');
 			this.customBlurButton = root.querySelector('[data-custom-blur]');
 			this.applyCustomBlurButton = root.querySelector('[data-apply-custom-blur]');
@@ -625,6 +646,10 @@
 			root.querySelector('[data-open-custom-edit]').addEventListener('click', () => this.startCustomEditMode());
 			root.querySelector('[data-apply-custom-edit]').addEventListener('click', () => this.applyCustomEdit());
 			root.querySelector('[data-cancel-custom-edit]').addEventListener('click', () => this.cancelCustomEditMode());
+			root.querySelector('[data-open-video]').addEventListener('click', () => this.startVideoMode());
+			root.querySelector('[data-create-video]').addEventListener('click', () => this.createVideo());
+			root.querySelector('[data-cancel-video]').addEventListener('click', () => this.cancelVideoMode());
+			root.querySelector('[data-done-video]').addEventListener('click', () => this.finishVideoMode());
 			root.querySelector('[data-blur-faces]').addEventListener('click', () => this.blurFaces());
 			root.querySelector('[data-custom-blur]').addEventListener('click', () => this.startManualBlurMode());
 			root.querySelector('[data-apply-custom-blur]').addEventListener('click', () => this.applyManualBlur());
@@ -645,6 +670,12 @@
 				if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
 					event.preventDefault();
 					this.applyCustomEdit();
+				}
+			});
+			this.videoPromptInput.addEventListener('keydown', (event) => {
+				if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+					event.preventDefault();
+					this.createVideo();
 				}
 			});
 			window.addEventListener('resize', this.manualBlurResizeHandler);
@@ -877,13 +908,30 @@
 					this.token = response.token;
 					this.jobId = response.jobId || '';
 					this.operation = this.resolveOperation(response);
+					if (this.operation === 'createVideo') {
+						this.providerControls.hidden = true;
+					}
 					this.setBusy(true, response.progressLabel || 'Queued');
 					this.poll();
 					return;
 				}
 
+				if (response.status === 'complete' && response.operation === 'createVideo' && response.downloadUrl) {
+					this.applyVideoResult(response);
+					return;
+				}
+
 				if (response.status === 'complete' && (response.enhancedUrl || response.imageUrl || response.assetUrl || response.url)) {
 					this.applyPreview(response);
+					return;
+				}
+
+				if (response.status === 'failed' && response.operation === 'createVideo') {
+					this.token = response.token || '';
+					this.jobId = response.jobId || '';
+					this.operation = 'createVideo';
+					this.startVideoMode(true);
+					this.showError(new Error(response.message || 'Video generation failed.'));
 				}
 			} catch (error) {
 				this.showError(error);
@@ -893,6 +941,7 @@
 		async enhance() {
 			this.clearError();
 			this.hideCustomEditMode(false);
+			this.hideVideoMode(false);
 			this.operation = 'enhance';
 			this.token = '';
 			this.jobId = '';
@@ -936,6 +985,7 @@
 			}
 
 			this.clearError();
+			this.hideVideoMode(false);
 			this.hideManualBlurMode(true, false);
 			if (!preservePrompt) {
 				this.customPromptInput.value = '';
@@ -1018,6 +1068,140 @@
 			}
 		}
 
+		startVideoMode(preservePrompt = false) {
+			if (this.uploadRepair) {
+				return;
+			}
+
+			this.clearError();
+			this.operation = 'createVideo';
+			this.hideCustomEditMode(false);
+			this.hideManualBlurMode(true, false);
+			if (!preservePrompt) {
+				this.videoPromptInput.value = '';
+			}
+			this.isVideoMode = true;
+			this.videoPanel.hidden = false;
+			this.providerControls.hidden = true;
+			this.setActionState('video');
+			this.setStatus('', false);
+			this.videoPromptInput.focus();
+		}
+
+		async cancelVideoMode() {
+			if (!this.isVideoMode) {
+				return;
+			}
+
+			this.clearError();
+			try {
+				if (this.token) {
+					await this.request('reset', {
+						assetId: this.assetId,
+						token: this.token,
+					});
+				}
+				this.token = '';
+				this.jobId = '';
+				this.hideVideoMode(true);
+				this.setActionState('idle');
+				this.setStatus('', false);
+			} catch (error) {
+				this.showError(error);
+			}
+		}
+
+		hideVideoMode(clearPrompt = false, restoreProviderControls = true) {
+			this.isVideoMode = false;
+			this.videoPanel.hidden = true;
+			if (clearPrompt) {
+				this.videoPromptInput.value = '';
+			}
+			if (restoreProviderControls) {
+				this.providerControls.hidden = !config.providerChoiceEnabled;
+			}
+		}
+
+		async createVideo() {
+			if (this.uploadRepair) {
+				return;
+			}
+
+			const videoPrompt = this.videoPromptInput.value.trim();
+			this.clearError();
+			this.operation = 'createVideo';
+			this.token = '';
+			this.jobId = '';
+			this.previewId = '';
+			this.videoDownloadUrl = '';
+			this.hideVideoMode(false, false);
+			this.setPreviewMode(false);
+			this.setBusy(true, 'Queued...');
+
+			try {
+				const response = await this.request('createVideo', {
+					assetId: this.assetId,
+					videoPrompt,
+				});
+				this.token = response.token || '';
+				this.jobId = response.jobId || '';
+
+				if (response.queued || this.token) {
+					this.poll();
+					return;
+				}
+
+				this.applyVideoResult(response);
+			} catch (error) {
+				this.setBusy(false);
+				this.startVideoMode(true);
+				this.showError(error);
+			}
+		}
+
+		applyVideoResult(response) {
+			if (!response.downloadUrl) {
+				throw new Error('The video response did not include a download URL.');
+			}
+
+			this.operation = 'createVideo';
+			this.token = response.token || this.token;
+			this.videoDownloadUrl = response.downloadUrl;
+			this.downloadVideoButton.href = response.downloadUrl;
+			if (response.videoFilename) {
+				this.downloadVideoButton.setAttribute('download', response.videoFilename);
+			}
+			this.single.hidden = false;
+			this.compare.hidden = true;
+			this.hideCustomEditMode(false);
+			this.hideManualBlurMode(true, false);
+			this.isVideoMode = true;
+			this.videoPanel.hidden = false;
+			this.providerControls.hidden = true;
+			this.setBusy(false);
+			this.setActionState('videoReady');
+			this.setStatus('Video ready to download.', false);
+		}
+
+		async finishVideoMode() {
+			this.clearError();
+			try {
+				await this.request('reset', {
+					assetId: this.assetId,
+					token: this.token,
+				});
+				this.token = '';
+				this.jobId = '';
+				this.videoDownloadUrl = '';
+				this.downloadVideoButton.href = '#';
+				this.hideVideoMode(true);
+				this.setActionState('idle');
+				this.setStatus('', false);
+			} catch (error) {
+				this.showError(error);
+			}
+		}
+
 		async blurFaces() {
 			if (this.uploadRepair) {
 				return;
@@ -1025,6 +1209,7 @@
 
 			this.clearError();
 			this.hideCustomEditMode(false);
+			this.hideVideoMode(false);
 			this.operation = 'blurFaces';
 			this.token = '';
 			this.jobId = '';
@@ -1059,6 +1244,7 @@
 
 			this.clearError();
 			this.hideCustomEditMode(false);
+			this.hideVideoMode(false);
 			if (!preserveRegions) {
 				this.resetManualBlurDrawing();
 			}
@@ -1163,6 +1349,7 @@
 			window.clearTimeout(this.pollTimer);
 			let shouldResumeManualBlur = false;
 			let shouldResumeCustomEdit = false;
+			let shouldResumeVideo = false;
 
 			try {
 				const response = await this.request('status', {
@@ -1174,16 +1361,23 @@
 				this.operation = this.resolveOperation(response);
 
 				if (response.status === 'complete') {
-					this.applyPreview(response);
+					if (this.operation === 'createVideo') {
+						this.applyVideoResult(response);
+					} else {
+						this.applyPreview(response);
+					}
 					return;
 				}
 
 				if (response.status === 'failed') {
 					shouldResumeManualBlur = this.operation === 'manualBlurFaces';
 					shouldResumeCustomEdit = this.operation === 'customEnhance';
-					const fallback = this.isBlurOperation()
+					shouldResumeVideo = this.operation === 'createVideo';
+					const fallback = this.isVideoOperation()
+						? 'Video generation failed.'
+						: (this.isBlurOperation()
 						? 'Face blur failed.'
-						: (this.isCustomEnhancement() ? 'Custom edit failed.' : 'Enhancement failed.');
+						: (this.isCustomEnhancement() ? 'Custom edit failed.' : 'Enhancement failed.'));
 					throw new Error(response.message || response.previousError || fallback);
 				}
 
@@ -1191,6 +1385,8 @@
 					this.setBusy(false);
 					if (this.operation === 'customEnhance') {
 						this.startCustomEditMode(true);
+					} else if (this.operation === 'createVideo') {
+						this.startVideoMode(true);
 					} else if (!this.resumeManualBlurMode()) {
 						this.setStatus('Canceled', false);
 					}
@@ -1198,7 +1394,7 @@
 				}
 
 				const label = response.progressLabel || (response.status === 'running'
-					? (this.isBlurOperation() ? 'Blurring faces' : 'Running')
+					? (this.isVideoOperation() ? 'Generating video' : (this.isBlurOperation() ? 'Blurring faces' : 'Running'))
 					: 'Queued');
 				this.setBusy(true, label, response.status === 'running');
 				this.pollTimer = window.setTimeout(() => this.poll(), 1500);
@@ -1208,6 +1404,8 @@
 					this.resumeManualBlurMode();
 				} else if (shouldResumeCustomEdit) {
 					this.startCustomEditMode(true);
+				} else if (shouldResumeVideo) {
+					this.startVideoMode(true);
 				}
 				this.showError(error);
 			}
@@ -1222,6 +1420,7 @@
 
 			const shouldResumeManualBlur = this.operation === 'manualBlurFaces';
 			const shouldResumeCustomEdit = this.operation === 'customEnhance';
+			const shouldResumeVideo = this.operation === 'createVideo';
 			this.clearError();
 			this.setBusy(true, 'Canceling...');
 
@@ -1236,6 +1435,8 @@
 				this.setBusy(false);
 				if (shouldResumeCustomEdit) {
 					this.startCustomEditMode(true);
+				} else if (shouldResumeVideo) {
+					this.startVideoMode(true);
 				} else if (!shouldResumeManualBlur || !this.resumeManualBlurMode()) {
 					this.setStatus('Canceled', false);
 				}
@@ -1340,6 +1541,7 @@
 			this.enhancedImage.src = enhancedUrl;
 			this.hideManualBlurMode(true);
 			this.hideCustomEditMode(false);
+			this.hideVideoMode(false);
 			this.setBusy(false);
 			this.setPreviewMode(true);
 			this.updateComparison();
@@ -1356,6 +1558,10 @@
 			this.customEditButton.disabled = isBusy;
 			this.applyCustomEditButton.disabled = isBusy;
 			this.cancelCustomEditButton.disabled = isBusy;
+			this.openVideoButton.disabled = isBusy;
+			this.createVideoButton.disabled = isBusy;
+			this.cancelVideoButton.disabled = isBusy;
+			this.doneVideoButton.disabled = isBusy;
 			this.blurFacesButton.disabled = isBusy;
 			this.customBlurButton.disabled = isBusy;
 			this.applyCustomBlurButton.disabled = isBusy || this.manualBlurRegions.length === 0;
@@ -1376,6 +1582,10 @@
 			this.customEditButton.disabled = true;
 			this.applyCustomEditButton.disabled = true;
 			this.cancelCustomEditButton.disabled = true;
+			this.openVideoButton.disabled = true;
+			this.createVideoButton.disabled = true;
+			this.cancelVideoButton.disabled = true;
+			this.doneVideoButton.disabled = true;
 			this.blurFacesButton.disabled = true;
 			this.customBlurButton.disabled = true;
 			this.applyCustomBlurButton.disabled = true;
@@ -1395,6 +1605,10 @@
 			this.customEditButton.disabled = true;
 			this.applyCustomEditButton.disabled = true;
 			this.cancelCustomEditButton.disabled = true;
+			this.openVideoButton.disabled = true;
+			this.createVideoButton.disabled = true;
+			this.cancelVideoButton.disabled = true;
+			this.doneVideoButton.disabled = true;
 			this.blurFacesButton.disabled = true;
 			this.customBlurButton.disabled = true;
 			this.applyCustomBlurButton.disabled = true;
@@ -1414,6 +1628,11 @@
 				this.toggleButton(this.customEditButton, true);
 				this.toggleButton(this.applyCustomEditButton, true);
 				this.toggleButton(this.cancelCustomEditButton, true);
+				this.toggleButton(this.openVideoButton, true);
+				this.toggleButton(this.createVideoButton, true);
+				this.toggleButton(this.cancelVideoButton, true);
+				this.toggleButton(this.downloadVideoButton, true);
+				this.toggleButton(this.doneVideoButton, true);
 				this.toggleButton(this.blurFacesButton, true);
 				this.toggleButton(this.customBlurButton, true);
 				this.toggleButton(this.applyCustomBlurButton, true);
@@ -1430,6 +1649,11 @@
 			this.toggleButton(this.customEditButton, state !== 'idle');
 			this.toggleButton(this.applyCustomEditButton, state !== 'customEdit');
 			this.toggleButton(this.cancelCustomEditButton, state !== 'customEdit');
+			this.toggleButton(this.openVideoButton, state !== 'idle');
+			this.toggleButton(this.createVideoButton, state !== 'video');
+			this.toggleButton(this.cancelVideoButton, state !== 'video');
+			this.toggleButton(this.downloadVideoButton, state !== 'videoReady');
+			this.toggleButton(this.doneVideoButton, state !== 'videoReady');
 			this.toggleButton(this.blurFacesButton, state !== 'idle');
 			this.toggleButton(this.customBlurButton, state !== 'idle');
 			this.toggleButton(this.applyCustomBlurButton, state !== 'manual');
@@ -1457,6 +1681,10 @@
 
 		isCustomEnhancement() {
 			return this.operation === 'customEnhance';
+		}
+
+		isVideoOperation() {
+			return this.operation === 'createVideo';
 		}
 
 		toggleButton(button, isHidden) {
