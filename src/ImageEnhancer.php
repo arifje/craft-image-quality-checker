@@ -192,6 +192,7 @@ class ImageEnhancer extends Plugin
 		}
 
 		$settings = $this->getSettings();
+		$videoService = $this->aiVideoGeneration;
 		$config = [
 			'craftMajorVersion' => (int) explode('.', Craft::$app->getVersion())[0],
 			'uploadRequirementAssistantEnabled' => $settings->enableUploadRequirementAssistant,
@@ -207,6 +208,8 @@ class ImageEnhancer extends Plugin
 				Settings::IMAGE_PROVIDER_XAI => Settings::xAiImageEnhancementModelOptions(),
 				Settings::IMAGE_PROVIDER_GOOGLE => Settings::googleImageEnhancementModelOptions(),
 			],
+			'videoProviderOptions' => $videoService->getAvailableProviderOptions($settings),
+			'videoModelOptions' => AiVideoGenerationService::modelOptions(),
 			'routes' => [
 				'uploadAssistant' => 'craft-image-enhancer/upload-assistant/upload',
 				'uploadLocalRepair' => 'craft-image-enhancer/upload-assistant/local-repair',

@@ -3,6 +3,7 @@
 namespace arjanbrinkman\craftimageenhancer\jobs;
 
 use arjanbrinkman\craftimageenhancer\ImageEnhancer;
+use arjanbrinkman\craftimageenhancer\services\AiVideoGenerationService;
 use Craft;
 use craft\db\Query;
 use craft\db\Table;
@@ -17,6 +18,8 @@ class ArticleImageVideoJob extends BaseJob implements RetryableJobInterface
 	public ?int $userId = null;
 	public string $token;
 	public string $videoPrompt = '';
+	public string $videoProvider = AiVideoGenerationService::PROVIDER_GOOGLE;
+	public string $videoModel = AiVideoGenerationService::GOOGLE_MODEL_GEMINI_OMNI_FLASH;
 
 	public function execute($queue): void
 	{
@@ -47,6 +50,8 @@ class ArticleImageVideoJob extends BaseJob implements RetryableJobInterface
 				$asset,
 				$localPath,
 				$this->videoPrompt,
+				$this->videoProvider,
+				$this->videoModel,
 				function(float $progress, string $label) use ($queue): void {
 					if ($this->isCanceled()) {
 						return;
@@ -67,7 +72,8 @@ class ArticleImageVideoJob extends BaseJob implements RetryableJobInterface
 			$this->updateStatus('complete', 1, 'Video ready to download', [
 				'videoPath' => $videoPath,
 				'videoFilename' => $service->getDownloadFilename($asset),
-				'videoModel' => $service::MODEL,
+				'videoProvider' => $this->videoProvider,
+				'videoModel' => $this->videoModel,
 			]);
 			$this->setProgress($queue, 1, 'Video ready to download');
 		} catch (\Throwable $e) {
@@ -130,6 +136,8 @@ class ArticleImageVideoJob extends BaseJob implements RetryableJobInterface
 			'assetId' => $this->assetId,
 			'token' => $this->token,
 			'operation' => 'createVideo',
+			'videoProvider' => $this->videoProvider,
+			'videoModel' => $this->videoModel,
 			'progress' => $progress,
 			'progressLabel' => $progressLabel,
 		], $extra);

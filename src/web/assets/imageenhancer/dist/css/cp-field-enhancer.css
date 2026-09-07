@@ -13,17 +13,18 @@
 .modal.image-enhancer-cp-modal,
 .image-enhancer-cp-modal {
 	box-sizing: border-box;
-	width: min(920px, calc(100vw - 96px));
-	height: min(760px, calc(100vh - 72px));
-	height: min(760px, calc(100dvh - 72px));
-	max-height: min(760px, calc(100vh - 72px));
+	width: min(1280px, calc(100vw - 64px));
+	height: min(1080px, calc(100vh - 48px));
+	height: min(1080px, calc(100dvh - 48px));
+	max-height: min(1080px, calc(100vh - 48px));
+	max-height: min(1080px, calc(100dvh - 48px));
 	overflow: hidden;
 }
 
 .image-enhancer-cp-modal.is-visible {
 	position: fixed;
 	z-index: 10000;
-	top: 36px;
+	top: 24px;
 	left: 50%;
 	transform: translateX(-50%);
 }
@@ -192,6 +193,29 @@
 	font-weight: 400;
 }
 
+.image-enhancer-cp-video-provider {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 12px;
+	margin-bottom: 12px;
+}
+
+.image-enhancer-cp-video-provider label {
+	margin: 0;
+}
+
+.image-enhancer-cp-video-provider label > span {
+	display: block;
+	margin-bottom: 4px;
+	color: inherit;
+	font-size: 12px;
+	font-weight: 700;
+}
+
+.image-enhancer-cp-video-provider select {
+	width: 100%;
+}
+
 .image-enhancer-cp-custom-edit textarea,
 .image-enhancer-cp-video textarea {
 	box-sizing: border-box;
@@ -220,7 +244,8 @@
 .image-enhancer-cp-compare {
 	position: relative;
 	width: 100%;
-	height: clamp(240px, 42vh, 430px);
+	height: clamp(280px, 52vh, 640px);
+	height: clamp(280px, 52dvh, 640px);
 	background: #202a33;
 }
 

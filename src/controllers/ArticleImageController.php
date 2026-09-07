@@ -150,8 +150,26 @@ class ArticleImageController extends Controller
 		}
 
 		$settings = ImageEnhancer::getInstance()->getSettings();
-		if ($settings->getResolvedGoogleAiApiKey() === '') {
-			return $this->asJsonFailure('Google AI API key is missing. Add it in the Image Enhancer settings first.');
+		$videoService = ImageEnhancer::getInstance()->aiVideoGeneration;
+		$videoProvider = Craft::$app->getRequest()->getBodyParam('videoProvider');
+		$videoModel = Craft::$app->getRequest()->getBodyParam('videoModel');
+		if (
+			($videoProvider !== null && !is_string($videoProvider)) ||
+			($videoModel !== null && !is_string($videoModel))
+		) {
+			return $this->asJsonFailure('Invalid video provider or model.');
+		}
+		$providerOptions = $videoService->resolveProviderOptions(
+			$videoProvider,
+			$videoModel,
+		);
+		if ($providerOptions === false) {
+			return $this->asJsonFailure('Invalid video provider or model.');
+		}
+		if ($videoService->getConfiguredApiKey($settings, $providerOptions['provider']) === '') {
+			return $this->asJsonFailure(
+				$videoService->getProviderLabel($providerOptions['provider']) . ' API key is missing. Add it in the Image Enhancer settings first.',
+			);
 		}
 
 		$localPath = $this->getFullAssetPath($asset);
@@ -160,12 +178,14 @@ class ArticleImageController extends Controller
 		}
 
 		try {
-			ImageEnhancer::getInstance()->aiVideoGeneration->cleanupExpiredVideos();
+			$videoService->cleanupExpiredVideos();
 			$token = bin2hex(random_bytes(16));
 			$this->setEnhancementStatus($token, [
 				'status' => 'queued',
 				'assetId' => $asset->id,
 				'operation' => 'createVideo',
+				'videoProvider' => $providerOptions['provider'],
+				'videoModel' => $providerOptions['model'],
 				'progress' => 0,
 				'progressLabel' => 'Queued',
 			]);
@@ -174,11 +194,15 @@ class ArticleImageController extends Controller
 				'userId' => Craft::$app->getUser()->getId(),
 				'token' => $token,
 				'videoPrompt' => $videoPrompt,
+				'videoProvider' => $providerOptions['provider'],
+				'videoModel' => $providerOptions['model'],
 			]));
 			$this->setEnhancementStatus($token, [
 				'status' => 'queued',
 				'assetId' => $asset->id,
 				'operation' => 'createVideo',
+				'videoProvider' => $providerOptions['provider'],
+				'videoModel' => $providerOptions['model'],
 				'jobId' => $jobId,
 				'progress' => 0,
 				'progressLabel' => 'Queued',
@@ -192,7 +216,8 @@ class ArticleImageController extends Controller
 				'jobId' => $jobId,
 				'token' => $token,
 				'statusUrl' => UrlHelper::actionUrl('craft-image-enhancer/article-image/status'),
-				'videoModel' => AiVideoGenerationService::MODEL,
+				'videoProvider' => $providerOptions['provider'],
+				'videoModel' => $providerOptions['model'],
 			]);
 		} catch (\Throwable $e) {
 			Craft::error('ImageEnhancer: Article image video queueing failed: ' . $e->getMessage(), __METHOD__);

@@ -39,9 +39,23 @@
 				{ label: 'Gemini 2.5 Flash Image (Nano Banana)', value: 'gemini-2.5-flash-image' },
 			],
 		},
+		videoProviderOptions: [
+			{ label: 'Google', value: 'google' },
+			{ label: 'Grok Imagine (xAI)', value: 'xai' },
+		],
+		videoModelOptions: {
+			google: [
+				{ label: 'Gemini Omni 1.1 Flash', value: 'gemini-omni-1.1-flash' },
+			],
+			xai: [
+				{ label: 'Grok Imagine Video 1.5', value: 'grok-imagine-video-1.5' },
+				{ label: 'Grok Imagine Video', value: 'grok-imagine-video' },
+			],
+		},
 	};
 	const config = mergeConfig(defaults, window.ImageEnhancerCp || {});
 	const providerStorageKey = 'craft-image-enhancer:cp:provider-preference';
+	const videoProviderStorageKey = 'craft-image-enhancer:cp:video-provider-preference';
 	const scanSelector = [
 		'.field .element',
 		'.field .element-card',
@@ -469,6 +483,8 @@
 			this.manualBlurResizeHandler = () => this.renderManualBlurRegions();
 			this.selectedProvider = this.getInitialProvider();
 			this.selectedModel = this.getInitialModel(this.selectedProvider);
+			this.selectedVideoProvider = this.getInitialVideoProvider();
+			this.selectedVideoModel = this.getInitialVideoModel(this.selectedVideoProvider);
 			this.modal = null;
 			this.root = null;
 		}
@@ -544,9 +560,13 @@
 				'    <p>Only the requested edit is applied. The original dimensions and unrelated content are preserved where possible.</p>',
 				'  </div>',
 				'  <div class="image-enhancer-cp-video" data-video-panel hidden>',
+				'    <div class="image-enhancer-cp-video-provider">',
+				'      <label><span>Provider</span><select data-video-provider></select></label>',
+				'      <label><span>Model</span><select data-video-model></select></label>',
+				'    </div>',
 				'    <label>Video instructions <span>(optional)</span></label>',
 				'    <textarea class="text fullwidth" rows="3" maxlength="4000" placeholder="For example: Slowly push the camera in while the subject looks toward the camera." data-video-prompt></textarea>',
-				'    <p>Creates a 720p MP4 with Gemini Omni Flash using the Google AI API key. The image remains unchanged.</p>',
+				'    <p>Creates a downloadable 720p MP4 with the selected provider. The image remains unchanged.</p>',
 				'  </div>',
 				'  <div class="image-enhancer-cp-stage">',
 				'    <div class="image-enhancer-cp-single" data-single>',
@@ -622,6 +642,8 @@
 			this.doneVideoButton = root.querySelector('[data-done-video]');
 			this.videoPanel = root.querySelector('[data-video-panel]');
 			this.videoPromptInput = root.querySelector('[data-video-prompt]');
+			this.videoProviderSelect = root.querySelector('[data-video-provider]');
+			this.videoModelSelect = root.querySelector('[data-video-model]');
 			this.blurFacesButton = root.querySelector('[data-blur-faces]');
 			this.customBlurButton = root.querySelector('[data-custom-blur]');
 			this.applyCustomBlurButton = root.querySelector('[data-apply-custom-blur]');
@@ -690,6 +712,7 @@
 			}
 
 			this.setupProviderControls();
+			this.setupVideoProviderControls();
 			this.setActionState('idle');
 			this.updateComparison();
 			if (!this.uploadRepair) {
@@ -898,6 +921,44 @@
 			this.selectedModel = this.modelSelect.value;
 		}
 
+		setupVideoProviderControls() {
+			const options = this.getVideoProviderOptions();
+			this.videoProviderSelect.replaceChildren();
+			options.forEach((option) => {
+				this.videoProviderSelect.appendChild(createOption(option));
+			});
+
+			if (!options.some((option) => option.value === this.selectedVideoProvider)) {
+				this.selectedVideoProvider = options[0]?.value || 'google';
+				this.selectedVideoModel = this.getInitialVideoModel(this.selectedVideoProvider);
+			}
+
+			this.videoProviderSelect.value = this.selectedVideoProvider;
+			this.videoProviderSelect.addEventListener('change', () => {
+				this.selectedVideoProvider = this.videoProviderSelect.value;
+				this.selectedVideoModel = this.getInitialVideoModel(this.selectedVideoProvider);
+				this.populateVideoModelSelect();
+				this.persistVideoProviderPreference();
+			});
+			this.videoModelSelect.addEventListener('change', () => {
+				this.selectedVideoModel = this.videoModelSelect.value;
+				this.persistVideoProviderPreference();
+			});
+			this.populateVideoModelSelect();
+		}
+
+		populateVideoModelSelect() {
+			this.videoModelSelect.replaceChildren();
+			const options = this.getVideoModelOptions(this.selectedVideoProvider);
+			options.forEach((option) => {
+				this.videoModelSelect.appendChild(createOption(option));
+			});
+			this.videoModelSelect.value = options.some((option) => option.value === this.selectedVideoModel)
+				? this.selectedVideoModel
+				: options[0]?.value || '';
+			this.selectedVideoModel = this.videoModelSelect.value;
+		}
+
 		async restoreStatus() {
 			try {
 				const response = await this.request('status', {
@@ -909,6 +970,7 @@
 					this.jobId = response.jobId || '';
 					this.operation = this.resolveOperation(response);
 					if (this.operation === 'createVideo') {
+						this.syncVideoSelection(response);
 						this.providerControls.hidden = true;
 					}
 					this.setBusy(true, response.progressLabel || 'Queued');
@@ -930,6 +992,7 @@
 					this.token = response.token || '';
 					this.jobId = response.jobId || '';
 					this.operation = 'createVideo';
+					this.syncVideoSelection(response);
 					this.startVideoMode(true);
 					this.showError(new Error(response.message || 'Video generation failed.'));
 				}
@@ -1139,10 +1202,14 @@
 			this.setBusy(true, 'Queued...');
 
 			try {
+				this.persistVideoProviderPreference();
 				const response = await this.request('createVideo', {
 					assetId: this.assetId,
 					videoPrompt,
+					videoProvider: this.selectedVideoProvider,
+					videoModel: this.selectedVideoModel,
 				});
+				this.syncVideoSelection(response);
 				this.token = response.token || '';
 				this.jobId = response.jobId || '';
 
@@ -1165,6 +1232,7 @@
 			}
 
 			this.operation = 'createVideo';
+			this.syncVideoSelection(response);
 			this.token = response.token || this.token;
 			this.videoDownloadUrl = response.downloadUrl;
 			this.downloadVideoButton.href = response.downloadUrl;
@@ -1359,6 +1427,9 @@
 					uploadRepairToken: this.repairToken,
 				});
 				this.operation = this.resolveOperation(response);
+				if (this.operation === 'createVideo') {
+					this.syncVideoSelection(response);
+				}
 
 				if (response.status === 'complete') {
 					if (this.operation === 'createVideo') {
@@ -2002,11 +2073,72 @@
 			return normalizeOptions(config.modelOptions[provider] || []);
 		}
 
+		getInitialVideoProvider() {
+			const preference = getVideoProviderPreference();
+			const options = this.getVideoProviderOptions();
+			if (options.some((option) => option.value === preference.provider)) {
+				return preference.provider;
+			}
+
+			return options[0]?.value || 'google';
+		}
+
+		getInitialVideoModel(provider) {
+			const preference = getVideoProviderPreference();
+			const options = this.getVideoModelOptions(provider);
+			if (
+				preference.provider === provider &&
+				options.some((option) => option.value === preference.model)
+			) {
+				return preference.model;
+			}
+
+			return options[0]?.value || '';
+		}
+
+		getVideoProviderOptions() {
+			return normalizeOptions(config.videoProviderOptions || []);
+		}
+
+		getVideoModelOptions(provider) {
+			return normalizeOptions(config.videoModelOptions[provider] || []);
+		}
+
+		syncVideoSelection(response) {
+			const providerOptions = this.getVideoProviderOptions();
+			const provider = typeof response.videoProvider === 'string' ? response.videoProvider : '';
+			if (providerOptions.some((option) => option.value === provider)) {
+				this.selectedVideoProvider = provider;
+				this.videoProviderSelect.value = provider;
+				this.selectedVideoModel = this.getInitialVideoModel(provider);
+				this.populateVideoModelSelect();
+			}
+
+			const model = typeof response.videoModel === 'string' ? response.videoModel : '';
+			const modelOptions = this.getVideoModelOptions(this.selectedVideoProvider);
+			if (modelOptions.some((option) => option.value === model)) {
+				this.selectedVideoModel = model;
+				this.videoModelSelect.value = model;
+			}
+			this.persistVideoProviderPreference();
+		}
+
 		persistProviderPreference() {
 			try {
 				window.localStorage?.setItem(providerStorageKey, JSON.stringify({
 					provider: this.selectedProvider,
 					model: this.selectedModel,
+				}));
+			} catch (error) {
+				// Ignore storage errors in the CP.
+			}
+		}
+
+		persistVideoProviderPreference() {
+			try {
+				window.localStorage?.setItem(videoProviderStorageKey, JSON.stringify({
+					provider: this.selectedVideoProvider,
+					model: this.selectedVideoModel,
 				}));
 			} catch (error) {
 				// Ignore storage errors in the CP.
@@ -2247,6 +2379,14 @@
 		}
 	}
 
+	function getVideoProviderPreference() {
+		try {
+			return JSON.parse(window.localStorage?.getItem(videoProviderStorageKey) || '{}') || {};
+		} catch (error) {
+			return {};
+		}
+	}
+
 	function mergeConfig(base, override) {
 		return {
 			...base,
@@ -2258,6 +2398,10 @@
 			modelOptions: {
 				...base.modelOptions,
 				...(override.modelOptions || {}),
+			},
+			videoModelOptions: {
+				...base.videoModelOptions,
+				...(override.videoModelOptions || {}),
 			},
 		};
 	}

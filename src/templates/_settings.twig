@@ -252,18 +252,8 @@
 			<div class="image-enhancer-provider-card" data-image-enhancement-provider-fields="xai">
 				<div class="image-enhancer-provider-card__header">
 					<h3>Grok Imagine</h3>
-					<p>Requires an xAI API key.</p>
+					<p>Uses the xAI API key configured below.</p>
 				</div>
-
-				{{ forms.autosuggestField({
-					label: 'API key',
-					name: 'xAiApiKey',
-					id: 'xAiApiKey',
-					instructions: 'Stored in project config and used for Grok Imagine requests. Environment variables are supported.',
-					value: settings.xAiApiKey,
-					placeholder: 'xai-...',
-					suggestEnvVars: true,
-				}) }}
 
 				{{ forms.selectField({
 					label: 'Image model',
@@ -278,7 +268,7 @@
 			<div class="image-enhancer-provider-card" data-image-enhancement-provider-fields="google">
 				<div class="image-enhancer-provider-card__header">
 					<h3>Google Nano Banana</h3>
-					<p>Uses the Google AI API key configured for video generation below.</p>
+					<p>Uses the Google AI API key configured in the shared credentials below.</p>
 				</div>
 
 				{{ forms.selectField({
@@ -295,19 +285,31 @@
 
 	<div class="image-enhancer-video-settings">
 		<div class="image-enhancer-provider-card__header">
-			<h2>Video generation</h2>
-			<p>The control-panel Create Video action uses Gemini Omni Flash to create a downloadable 720p MP4. It never replaces or creates a Craft asset.</p>
+			<h2>Video generation and shared credentials</h2>
+			<p>Editors choose Google Gemini Omni Flash or Grok Imagine in the Create Video modal. Generated 720p MP4 files are downloads only and never replace or create a Craft asset.</p>
 		</div>
 
-		{{ forms.autosuggestField({
-			label: 'Google AI API key',
-			name: 'googleAiApiKey',
-			id: 'googleAiApiKey',
-			instructions: 'Used for Gemini Omni Flash video generation and Google Nano Banana image enhancement. Environment variables are supported.',
-			value: settings.googleAiApiKey,
-			placeholder: 'AIza...',
-			suggestEnvVars: true,
-		}) }}
+		<div class="image-enhancer-video-settings__fields">
+			{{ forms.autosuggestField({
+				label: 'Google AI API key',
+				name: 'googleAiApiKey',
+				id: 'googleAiApiKey',
+				instructions: 'Used for Gemini Omni Flash video generation and Google Nano Banana image enhancement. Environment variables are supported.',
+				value: settings.googleAiApiKey,
+				placeholder: 'AIza...',
+				suggestEnvVars: true,
+			}) }}
+
+			{{ forms.autosuggestField({
+				label: 'xAI API key',
+				name: 'xAiApiKey',
+				id: 'xAiApiKey',
+				instructions: 'Used for Grok Imagine video and image generation. Environment variables are supported.',
+				value: settings.xAiApiKey,
+				placeholder: 'xai-...',
+				suggestEnvVars: true,
+			}) }}
+		</div>
 	</div>
 
 	{% js %}
@@ -344,7 +346,7 @@
 
 		.image-enhancer-video-settings {
 			box-sizing: border-box;
-			max-width: 520px;
+			max-width: 880px;
 			margin: -16px 0 32px;
 			padding: 16px;
 			border: 1px solid #dce3ea;
@@ -354,6 +356,12 @@
 
 		.image-enhancer-video-settings h2 {
 			margin: 0 0 4px;
+		}
+
+		.image-enhancer-video-settings__fields {
+			display: grid;
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			gap: 16px;
 		}
 
 		.image-enhancer-provider-settings__intro {
@@ -417,6 +425,12 @@
 		.image-enhancer-video-settings input.text {
 			width: 100%;
 			max-width: 100%;
+		}
+
+		@media (max-width: 700px) {
+			.image-enhancer-video-settings__fields {
+				grid-template-columns: 1fr;
+			}
 		}
 	{% endcss %}
 
